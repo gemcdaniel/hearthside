@@ -1,0 +1,1 @@
+export { sudokuMetadata } from './metadata';

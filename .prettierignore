@@ -1,0 +1,11 @@
+dist
+node_modules
+bun.lock
+coverage
+playwright-report
+test-results
+engine
+services
+AGENTS.md
+.agents
+docs/plan.md

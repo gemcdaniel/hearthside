@@ -1,0 +1,21 @@
+# Dependencies & build outputs
+node_modules/
+dist/
+.vite/
+coverage/
+playwright-report/
+test-results/
+.playwright/
+
+# Go & WASM outputs
+*.wasm
+*.exe
+*.test
+*.out
+
+# OS, editors & local env
+.DS_Store
+Thumbs.db
+.env
+.env.local
+.env.*.local

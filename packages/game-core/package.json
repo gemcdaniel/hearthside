@@ -1,0 +1,14 @@
+{
+  "name": "@hearthside/game-core",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint --config ../../eslint.config.js .",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json"
+  }
+}
