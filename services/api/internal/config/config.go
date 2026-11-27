@@ -13,13 +13,27 @@ import (
 
 // Default configuration values for local development and containerized execution.
 const (
-	DefaultAddr          = ":8080"
-	DefaultDBPath        = "./data/hearthside.db"
-	DefaultPublicBaseURL = "http://localhost:5173"
-	DefaultCookieSecure  = true
-	DefaultLogLevel      = slog.LevelInfo
-	DefaultOIDCScopes    = "openid profile email"
+	DefaultAddr                   = ":8080"
+	DefaultDBPath                 = "./data/hearthside.db"
+	DefaultPublicBaseURL          = "http://localhost:5173"
+	DefaultCookieSecure           = true
+	DefaultLogLevel               = slog.LevelInfo
+	DefaultOIDCScopes             = "openid profile email"
+	DefaultPuzzleSchedulerEnabled = true
+	DefaultPuzzlePoolTarget       = 50
+	DefaultPuzzlePoolLowWater     = 20
+	DefaultPuzzlePoolMaxTotal     = 2000
+	DefaultDailyLookaheadDays     = 7
 )
+
+// PuzzleConfig controls server-side puzzle bank generation and daily pre-generation.
+type PuzzleConfig struct {
+	SchedulerEnabled   bool
+	PoolTarget         int
+	PoolLowWater       int
+	PoolMaxTotal       int
+	DailyLookaheadDays int
+}
 
 // OIDCConfig holds optional generic OpenID Connect provider settings.
 type OIDCConfig struct {
@@ -45,6 +59,7 @@ type Config struct {
 	LogLevel       slog.Level
 	BootstrapToken string
 	OIDC           OIDCConfig
+	Puzzles        PuzzleConfig
 }
 
 // LookupFunc resolves environment variable names to values.
@@ -110,6 +125,12 @@ func LoadFromLookup(lookup LookupFunc) (Config, error) {
 		return Config{}, err
 	}
 	cfg.OIDC = oidcCfg
+
+	puzzleCfg, err := loadPuzzleConfig(lookup)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.Puzzles = puzzleCfg
 
 	return cfg, nil
 }
@@ -200,4 +221,59 @@ func lookupNonEmpty(lookup LookupFunc, key string) (string, bool) {
 		return "", false
 	}
 	return trimmed, true
+}
+
+func loadPuzzleConfig(lookup LookupFunc) (PuzzleConfig, error) {
+	pc := PuzzleConfig{
+		SchedulerEnabled:   DefaultPuzzleSchedulerEnabled,
+		PoolTarget:         DefaultPuzzlePoolTarget,
+		PoolLowWater:       DefaultPuzzlePoolLowWater,
+		PoolMaxTotal:       DefaultPuzzlePoolMaxTotal,
+		DailyLookaheadDays: DefaultDailyLookaheadDays,
+	}
+
+	if v, ok := lookupNonEmpty(lookup, "HEARTHSIDE_PUZZLE_SCHEDULER_ENABLED"); ok {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return PuzzleConfig{}, fmt.Errorf("invalid HEARTHSIDE_PUZZLE_SCHEDULER_ENABLED %q: %w", v, err)
+		}
+		pc.SchedulerEnabled = b
+	}
+
+	if err := parseBoundedInt(lookup, "HEARTHSIDE_PUZZLE_POOL_TARGET", 1, 10000, &pc.PoolTarget); err != nil {
+		return PuzzleConfig{}, err
+	}
+	if err := parseBoundedInt(lookup, "HEARTHSIDE_PUZZLE_POOL_LOW_WATER", 0, 10000, &pc.PoolLowWater); err != nil {
+		return PuzzleConfig{}, err
+	}
+	if err := parseBoundedInt(lookup, "HEARTHSIDE_PUZZLE_POOL_MAX_TOTAL", 1, 100000, &pc.PoolMaxTotal); err != nil {
+		return PuzzleConfig{}, err
+	}
+	if err := parseBoundedInt(lookup, "HEARTHSIDE_DAILY_LOOKAHEAD_DAYS", 0, 365, &pc.DailyLookaheadDays); err != nil {
+		return PuzzleConfig{}, err
+	}
+
+	if pc.PoolMaxTotal < pc.PoolTarget {
+		return PuzzleConfig{}, fmt.Errorf(
+			"HEARTHSIDE_PUZZLE_POOL_MAX_TOTAL (%d) must be >= HEARTHSIDE_PUZZLE_POOL_TARGET (%d)",
+			pc.PoolMaxTotal, pc.PoolTarget,
+		)
+	}
+	return pc, nil
+}
+
+func parseBoundedInt(lookup LookupFunc, key string, minVal, maxVal int, dst *int) error {
+	raw, ok := lookupNonEmpty(lookup, key)
+	if !ok {
+		return nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return fmt.Errorf("invalid %s %q: %w", key, raw, err)
+	}
+	if n < minVal || n > maxVal {
+		return fmt.Errorf("%s (%d) must be between %d and %d", key, n, minVal, maxVal)
+	}
+	*dst = n
+	return nil
 }

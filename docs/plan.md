@@ -512,9 +512,9 @@ Done when: online and offline devices play identical Daily Puzzles, local profil
 
 - [x] Run 1: Single-container Go API skeleton (`cmd/server`, `config`, `db`, `httpapi`), `GET /api/v1/healthz`, `HEARTHSIDE_WEB_DIR=/srv/web` static PWA + `.gz` serving, Workbox `/api` denylist, unified `Dockerfile`, and Compose/Traefik routing verified.
 - [x] Run 2: Invite-only Email + Argon2id, generic OIDC Discovery + PKCE, session cookies, and household child profiles implemented and tested.
-- [ ] Run 3: Scheduled SQLite puzzle bank generation and online PWA bank top-up implemented and tested.
-- [ ] Run 4: Daily puzzle endpoint (D28 parity), non-destructive local profile linking UI (D29), and SQLite backup/restore runbook verified.
+- [x] Run 3: Scheduled SQLite puzzle bank generation, `DailySeed` WASM parity, and authenticated puzzle/daily endpoints implemented and tested.
+- [ ] Run 4: Client online puzzle bank top-up / Daily Puzzle sync, non-destructive local profile linking UI (D29), and SQLite backup/restore runbook verified.
 
 ## 16. Next step
 
-Continue **Phase 4, Run 3** (Server SQLite puzzle bank service, scheduled Go engine replenishment, and online PWA puzzle bank top-up).
+Continue **Phase 4, Run 4** (Wire online PWA puzzle bank top-up and Daily Puzzle fetch with local caching, build optional Sign-In & non-destructive local profile linking UI per D29, and document SQLite backup/restore operations).

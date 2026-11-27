@@ -47,8 +47,8 @@ func TestOpenPragmasAndMigrateIdempotent(t *testing.T) {
 	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&migrationCount); err != nil {
 		t.Fatalf("count schema_migrations failed: %v", err)
 	}
-	if migrationCount != 2 {
-		t.Fatalf("migrationCount = %d, want 2", migrationCount)
+	if migrationCount != 3 {
+		t.Fatalf("migrationCount = %d, want 3", migrationCount)
 	}
 
 	tables := []string{
@@ -60,12 +60,25 @@ func TestOpenPragmasAndMigrateIdempotent(t *testing.T) {
 		"invites",
 		"sessions",
 		"oidc_auth_flows",
+		"puzzles",
+		"daily_puzzles",
+		"puzzle_generator_state",
 	}
 	for _, table := range tables {
 		var name string
 		err := database.QueryRowContext(ctx, `SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&name)
 		if err != nil {
 			t.Fatalf("expected table %s to exist: %v", table, err)
+		}
+	}
+
+	for _, diff := range []string{"easy", "medium", "hard"} {
+		var nextSeed int64
+		if err := database.QueryRowContext(ctx, `SELECT next_seed FROM puzzle_generator_state WHERE difficulty = ?`, diff).Scan(&nextSeed); err != nil {
+			t.Fatalf("query puzzle_generator_state(%s) failed: %v", diff, err)
+		}
+		if nextSeed != 1000000 {
+			t.Fatalf("next_seed(%s) = %d, want 1000000", diff, nextSeed)
 		}
 	}
 

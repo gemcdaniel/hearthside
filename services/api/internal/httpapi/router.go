@@ -11,6 +11,7 @@ import (
 	"github.com/gemcdaniel/hearthside/engine/sudoku"
 	"github.com/gemcdaniel/hearthside/services/api/internal/auth"
 	"github.com/gemcdaniel/hearthside/services/api/internal/config"
+	"github.com/gemcdaniel/hearthside/services/api/internal/puzzles"
 )
 
 const healthCheckTimeout = 2 * time.Second
@@ -20,6 +21,7 @@ type Dependencies struct {
 	DB             *sql.DB
 	Logger         *slog.Logger
 	Config         config.Config
+	Puzzles        *puzzles.Service
 	OIDCHTTPClient *http.Client
 	Now            func() time.Time
 }
@@ -44,8 +46,12 @@ func NewHandler(deps Dependencies) http.Handler {
 	}
 
 	var store *auth.Store
+	puzzleSvc := deps.Puzzles
 	if deps.DB != nil {
 		store = auth.NewStore(deps.DB, deps.Now)
+		if puzzleSvc == nil {
+			puzzleSvc = puzzles.NewService(deps.DB, cfg.Puzzles, logger, deps.Now)
+		}
 	}
 	oidcClient := auth.NewOIDCClient(cfg.OIDC, cfg.PublicBaseURL, deps.OIDCHTTPClient)
 
@@ -70,6 +76,11 @@ func NewHandler(deps Dependencies) http.Handler {
 	mux.Handle("POST /api/v1/household/profiles", requireAuth(store, createProfileHandler(store, logger)))
 	mux.Handle("PATCH /api/v1/household/profiles/{id}", requireAuth(store, updateProfileHandler(store, logger)))
 	mux.Handle("DELETE /api/v1/household/profiles/{id}", requireAuth(store, deleteProfileHandler(store, logger)))
+
+	// Authenticated puzzle bank & Daily Puzzle routes.
+	mux.Handle("GET /api/v1/puzzles/daily", requireAuth(store, dailyPuzzleHandler(puzzleSvc, deps.Now, logger)))
+	mux.Handle("GET /api/v1/puzzles/bank", requireAuth(store, bankPuzzlesHandler(puzzleSvc, logger)))
+	mux.Handle("GET /api/v1/puzzles/{id}", requireAuth(store, getPuzzleByIDHandler(puzzleSvc, logger)))
 
 	// Strict /api boundary so unmatched API paths never fall through to SPA index.html.
 	mux.HandleFunc("/api", apiNotFoundHandler)

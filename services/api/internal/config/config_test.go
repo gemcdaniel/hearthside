@@ -44,6 +44,12 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.WebDir != "" {
 		t.Fatalf("WebDir = %q, want empty", cfg.WebDir)
 	}
+	if !cfg.Puzzles.SchedulerEnabled || cfg.Puzzles.PoolTarget != DefaultPuzzlePoolTarget ||
+		cfg.Puzzles.PoolLowWater != DefaultPuzzlePoolLowWater ||
+		cfg.Puzzles.PoolMaxTotal != DefaultPuzzlePoolMaxTotal ||
+		cfg.Puzzles.DailyLookaheadDays != DefaultDailyLookaheadDays {
+		t.Fatalf("unexpected default Puzzles config: %+v", cfg.Puzzles)
+	}
 }
 
 func TestLoadCustomAndOIDC(t *testing.T) {
@@ -53,20 +59,28 @@ func TestLoadCustomAndOIDC(t *testing.T) {
 	}
 
 	cfg, err := LoadFromLookup(mapLookup(map[string]string{
-		"HEARTHSIDE_ADDR":               ":9090",
-		"HEARTHSIDE_DB_PATH":            "/data/custom.db",
-		"HEARTHSIDE_WEB_DIR":            webDir,
-		"HEARTHSIDE_PUBLIC_BASE_URL":    "https://hearthside.example.com/",
-		"HEARTHSIDE_COOKIE_SECURE":      "false",
-		"HEARTHSIDE_LOG_LEVEL":          "debug",
-		"HEARTHSIDE_BOOTSTRAP_TOKEN":    "bootstrap-secret",
-		"HEARTHSIDE_OIDC_ISSUER_URL":    "https://accounts.google.com/",
-		"HEARTHSIDE_OIDC_CLIENT_ID":     "client-123",
-		"HEARTHSIDE_OIDC_PROVIDER_NAME": "Google",
-		"HEARTHSIDE_OIDC_SCOPES":        "openid email",
+		"HEARTHSIDE_ADDR":                     ":9090",
+		"HEARTHSIDE_DB_PATH":                  "/data/custom.db",
+		"HEARTHSIDE_WEB_DIR":                  webDir,
+		"HEARTHSIDE_PUBLIC_BASE_URL":          "https://hearthside.example.com/",
+		"HEARTHSIDE_COOKIE_SECURE":            "false",
+		"HEARTHSIDE_LOG_LEVEL":                "debug",
+		"HEARTHSIDE_BOOTSTRAP_TOKEN":          "bootstrap-secret",
+		"HEARTHSIDE_OIDC_ISSUER_URL":          "https://accounts.google.com/",
+		"HEARTHSIDE_OIDC_CLIENT_ID":           "client-123",
+		"HEARTHSIDE_OIDC_PROVIDER_NAME":       "Google",
+		"HEARTHSIDE_OIDC_SCOPES":              "openid email",
+		"HEARTHSIDE_PUZZLE_SCHEDULER_ENABLED": "false",
+		"HEARTHSIDE_PUZZLE_POOL_TARGET":       "25",
+		"HEARTHSIDE_PUZZLE_POOL_LOW_WATER":    "5",
+		"HEARTHSIDE_PUZZLE_POOL_MAX_TOTAL":    "500",
+		"HEARTHSIDE_DAILY_LOOKAHEAD_DAYS":     "3",
 	}))
 	if err != nil {
 		t.Fatalf("LoadFromLookup returned unexpected error: %v", err)
+	}
+	if cfg.Puzzles.SchedulerEnabled || cfg.Puzzles.PoolTarget != 25 || cfg.Puzzles.PoolLowWater != 5 || cfg.Puzzles.PoolMaxTotal != 500 || cfg.Puzzles.DailyLookaheadDays != 3 {
+		t.Fatalf("unexpected custom Puzzles config: %+v", cfg.Puzzles)
 	}
 
 	if cfg.Addr != ":9090" {
@@ -186,6 +200,17 @@ func TestLoadValidationErrors(t *testing.T) {
 				"HEARTHSIDE_OIDC_ISSUER_URL": "not-a-url",
 				"HEARTHSIDE_OIDC_CLIENT_ID":  "abc",
 			},
+		},
+		{
+			name: "puzzle max total below target",
+			env: map[string]string{
+				"HEARTHSIDE_PUZZLE_POOL_TARGET":    "100",
+				"HEARTHSIDE_PUZZLE_POOL_MAX_TOTAL": "50",
+			},
+		},
+		{
+			name: "invalid puzzle scheduler bool",
+			env:  map[string]string{"HEARTHSIDE_PUZZLE_SCHEDULER_ENABLED": "nope"},
 		},
 	}
 

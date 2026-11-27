@@ -17,6 +17,7 @@ import (
 	"github.com/gemcdaniel/hearthside/services/api/internal/config"
 	"github.com/gemcdaniel/hearthside/services/api/internal/db"
 	"github.com/gemcdaniel/hearthside/services/api/internal/httpapi"
+	"github.com/gemcdaniel/hearthside/services/api/internal/puzzles"
 )
 
 const shutdownTimeout = 10 * time.Second
@@ -66,9 +67,13 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("migrate database: %w", err)
 	}
 
+	puzzleSvc := puzzles.NewService(database, cfg.Puzzles, logger, nil)
+	puzzleSvc.Start(ctx)
+	defer puzzleSvc.Wait()
+
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           httpapi.NewHandler(httpapi.Dependencies{DB: database, Logger: logger, Config: cfg}),
+		Handler:           httpapi.NewHandler(httpapi.Dependencies{DB: database, Logger: logger, Config: cfg, Puzzles: puzzleSvc}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,

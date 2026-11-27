@@ -26,6 +26,31 @@ describe('Sudoku deterministic daily & overflow seeds (D22)', () => {
     expect(seedA).not.toBe(seedOtherVer);
   });
 
+  it('matches the shared Go engine/sudoku DailySeed golden vectors bit-for-bit', () => {
+    const vectors = [
+      ['2026-01-01', 'easy', '0.1.0-dev', 38857924464638],
+      ['2026-01-01', 'medium', '0.1.0-dev', 7786398870909375],
+      ['2026-01-01', 'hard', '0.1.0-dev', 2509204912584121],
+      ['2026-02-28', 'easy', '0.1.0-dev', 73372166395216],
+      ['2026-02-28', 'medium', '0.1.0-dev', 8909620767171853],
+      ['2026-02-28', 'hard', '0.1.0-dev', 2803896412866403],
+      ['2026-11-27', 'easy', '0.1.0-dev', 5384261240580451],
+      ['2026-11-27', 'medium', '0.1.0-dev', 5038883581582286],
+      ['2026-11-27', 'hard', '0.1.0-dev', 4246444013539808],
+      ['2027-06-15', 'easy', '0.1.0-dev', 3103044816375837],
+      ['2027-06-15', 'medium', '0.1.0-dev', 6133141650307316],
+      ['2027-06-15', 'hard', '0.1.0-dev', 5926366238029018],
+      ['2028-02-29', 'easy', '0.1.0-dev', 8820532581852875],
+      ['2028-02-29', 'medium', '0.1.0-dev', 1530999194735286],
+      ['2028-02-29', 'hard', '0.1.0-dev', 4462973969286824],
+      ['2026-11-27', 'medium', '1.0.0', 3550963403440380],
+    ] as const;
+
+    for (const [date, difficulty, version, expected] of vectors) {
+      expect(computeDailySeed(date, difficulty, version)).toBe(expected);
+    }
+  });
+
   it('computes deterministic overflow seeds strictly above starter-bank range', () => {
     const s0 = computeOverflowSeed('easy', 0, '0.1.0-dev');
     const s0Repeat = computeOverflowSeed('easy', 0, '0.1.0-dev');
