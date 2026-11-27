@@ -92,6 +92,7 @@ export interface WasmVariantInfo {
 
 export interface WasmManifest {
   readonly generatedAt: string;
+  readonly engineVersion?: string;
   readonly goVersion: string;
   readonly tinygoVersion: string | null;
   readonly variants: readonly WasmVariantInfo[];
@@ -304,6 +305,8 @@ export function parseWasmManifest(raw: unknown): WasmManifest | null {
   }
   return {
     generatedAt: candidate.generatedAt,
+    engineVersion:
+      typeof candidate.engineVersion === 'string' ? candidate.engineVersion : undefined,
     goVersion: candidate.goVersion,
     tinygoVersion: candidate.tinygoVersion,
     variants,

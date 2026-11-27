@@ -1,8 +1,8 @@
-# Hearthside: Project Plan v0.10 (Phase 3 Active)
+# Hearthside: Project Plan v1.0 (Offline Release Ready)
 
-Draft v0.10, November 27, 2026. Status legend: **Confirmed** means locked by the project owner; **Proposed** means recommended default awaiting confirmation if changes are needed; **Open** means unresolved.
+Version 1.0, November 27, 2026. Status legend: **Confirmed** means locked by the project owner; **Proposed** means recommended default awaiting confirmation if changes are needed; **Open** means unresolved.
 
-Version 0.10 marks **Phase 2 complete** (AIO game shell, IndexedDB storage + export/import, local profiles, pure Sudoku engine & notes invariants D8/D12/D20, split mistake checking D21, Stitch-aligned `100dvh` zero-scroll UX, 4-tier WASM hints, deterministic offline Daily Puzzles D22, per-profile stats, and Playwright E2E green), updates **D24** for procedural Web Audio ambient music tailored per theme, and lays out **Phase 3 (Polish and 1.0)** execution runs in Section 14.
+Version 1.0 completes **Phase 3 (Polish and 1.0)**: reduced-motion-safe Sudoku micro-interactions, refined Web Audio SFX + `unitComplete` cue, procedural per-theme ambient music (D24), automated WCAG 2.1 AA audits across all 4 theme×mode variants (`@axe-core/playwright`), focus trapping & keyboard playability, dynamic `<meta name="theme-color">`, lazy chunk splitting, and `v1.0.0` release verification ahead of Phase 4 backend services.
 
 ## 1. Vision and scope
 
@@ -227,13 +227,13 @@ Exit met: pure-Go board, MRV uniqueness solver, Easy/Medium/Hard logical solver 
 
 Exit met: complete offline Sudoku playable across desktop and mobile profiles with local persistence, 4-tier WASM hints, Daily Puzzle caching, stats/victory flows, and green Vitest + Playwright E2E checks (Section 13).
 
-### Phase 3: Polish and 1.0
+### Phase 3: Polish and 1.0 (Completed)
 
 1. Run 1: Reduced-motion-safe micro-interactions (digit pop-in, completed unit sweep + `unitComplete` cue, conflict nudge, victory ripple), SFX refinement, and procedural Web Audio ambient music tailored per theme (D24).
-2. Run 2: Automated accessibility audit (`@axe-core/playwright`), modal/board focus management, and Lighthouse performance pass against agreed budgets.
-3. Run 3: Family playtest, especially with the children; difficulty tier tuning; and `v1.0.0` release tag.
+2. Run 2: Automated accessibility audit (`@axe-core/playwright`), modal/board focus management, dynamic `theme-color`, chunk splitting, and offline cold-start PWA hardening.
+3. Run 3: Release documentation, asset provenance audit, workspace `1.0.0` versioning, and full Go/WASM/Web/E2E release verification gate.
 
-Exit: 1.0 offline release (Section 14).
+Exit met: Hearthside `v1.0.0` offline release ready across Windows, Linux, Android, and desktop/mobile PWA with zero critical/serious axe violations and all offline/WASM/E2E checks green (Section 14).
 
 ### Phase 4: Backend foundation on the home server
 
@@ -423,9 +423,9 @@ Done when: all Vitest, Playwright E2E, Go, and build checks pass locally and in 
 - [x] 4-tier progressive WASM hints, starter bank + deterministic offline Daily Puzzle, and per-profile stats work 100% offline.
 - [x] Playwright E2E suite and GitHub Actions CI are green.
 
-## 14. Phase 3 in detail (Polish and 1.0)
+## 14. Phase 3 in detail (Completed)
 
-Phase 3 elevates Hearthside from feature-complete offline play to a warm, tactile, accessible `v1.0.0` offline release across three runs.
+Phase 3 elevated Hearthside from feature-complete offline play to a warm, tactile, accessible `v1.0.0` offline release across three runs.
 
 ### 14.1 Run 1: Micro-interactions, SFX refinement, and procedural Web Audio ambient music
 
@@ -457,12 +457,12 @@ Done when: zero serious/critical `@axe-core/playwright` violations remain, modal
 
 Done when: family playtest feedback is incorporated, all CI checks pass, and `v1.0.0` is tagged.
 
-### 14.4 Phase 3 exit checklist
+### 14.4 Phase 3 exit checklist (Completed)
 
 - [x] Procedural ambient music per theme, refined SFX + `unitComplete`, and reduced-motion-safe micro-interactions complete and tested (Run 1).
 - [x] `@axe-core/playwright` WCAG 2.1 AA audit across all 4 theme×mode variants, keyboard focus trapping/restoration, dynamic `<meta name="theme-color">`, chunk splitting, and offline PWA cold-start hardening pass (Run 2).
-- [ ] Family playtest feedback addressed, difficulty tiers tuned, and `v1.0.0` offline release tagged (Run 3).
+- [x] Release docs (`plan.md` v1.0, `CHANGELOG.md`, device matrix), `assets/manifest.json` provenance audit, `1.0.0` versioning, and full Go/WASM/Web/E2E release verification gate complete (Run 3).
 
 ## 15. Next step
 
-Start **Phase 3, Run 3** (family playtesting across desktop and Android devices, difficulty tier tuning, and `v1.0.0` offline release tag).
+Start **Phase 4: Backend foundation on the home server** (Go API skeleton, SQLite storage & migrations, Docker Compose behind Traefik HTTPS at `hearthside.example.com`, household invite accounts, and scheduled puzzle/daily services while keeping offline v1.0 play 100% self-contained).

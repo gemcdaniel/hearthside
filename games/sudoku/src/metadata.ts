@@ -1,4 +1,5 @@
 import type { GameMetadata } from '@hearthside/game-core';
+import { SUDOKU_ENGINE_VERSION } from './engine/daily';
 
 export const sudokuMetadata: GameMetadata = {
   id: 'sudoku',
@@ -12,4 +13,5 @@ export const sudokuMetadata: GameMetadata = {
     { id: 'hard', label: 'Hard', description: 'X-Wing, Wings & Swordfish' },
   ],
   supportsOffline: true,
+  engineVersion: SUDOKU_ENGINE_VERSION,
 };

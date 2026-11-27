@@ -164,5 +164,9 @@ describe('Hearthside AIO Shell', () => {
     await waitFor(() => {
       expect(audioService.getSnapshot().activeMusicTrack).toBe('warm-hearthside');
     });
+
+    // Settings footer displays centralized v1.0.0 app version alongside Go engine version
+    expect(within(dialog).getByText('Hearthside v1.0.0')).toBeInTheDocument();
+    expect(within(dialog).getByText('Go Engine v0.1.0-dev')).toBeInTheDocument();
   });
 });

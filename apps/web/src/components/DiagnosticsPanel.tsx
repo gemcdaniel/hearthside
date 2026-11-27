@@ -9,7 +9,9 @@ import {
   writeSmokeRecord,
   type StoragePersistenceStatus,
 } from '../diagnostics/indexedDb';
+import { getAppTitle, getAppVersion } from '../appInfo';
 import { playSmokeChime } from '../diagnostics/webAudio';
+import { shellGameRegistry } from '../games/shellRegistry';
 import { WasmBenchmarkCard } from './WasmBenchmarkCard';
 
 function formatPersistenceLabel(status: StoragePersistenceStatus | 'checking'): string {
@@ -235,6 +237,11 @@ export function DiagnosticsPanel() {
 
         <WasmBenchmarkCard />
       </div>
+
+      <p className="hs-diag-output">
+        Build: {getAppTitle()} v{getAppVersion()} · Go Engine v
+        {shellGameRegistry.listMetadata().find((g) => g.engineVersion)?.engineVersion ?? 'unknown'}
+      </p>
     </section>
   );
 }

@@ -18,6 +18,7 @@ export interface GameMetadata {
   readonly icon: string;
   readonly supportedModes: readonly GameModeDescriptor[];
   readonly supportsOffline: boolean;
+  readonly engineVersion?: string;
 }
 
 export interface GameEvent<TType extends string = string, TPayload = unknown> {

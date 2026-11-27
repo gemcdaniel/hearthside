@@ -1,5 +1,5 @@
 export { AUDIO_CUES, isAudioCue, type AudioCue, type AudioService } from './audio';
-export { APP_DISPLAY_NAME } from './config';
+export { APP_DISPLAY_NAME, APP_VERSION } from './config';
 export type {
   GameCategory,
   GameEvent,

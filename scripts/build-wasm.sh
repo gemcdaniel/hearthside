@@ -37,6 +37,10 @@ GO_WASM_GZIP=$(gzip_size "$OUT_DIR/sudoku-go.wasm")
 GO_GLUE_BYTES=$(byte_size "$OUT_DIR/wasm_exec-go.js")
 GO_GLUE_GZIP=$(gzip_size "$OUT_DIR/wasm_exec-go.js")
 GO_VERSION=$(go version | sed 's/"/\\"/g')
+ENGINE_VERSION=$(sed -n 's/^const EngineVersion = "\(.*\)"/\1/p' "$ENGINE_DIR/engine.go" | head -n 1)
+if [ -z "$ENGINE_VERSION" ]; then
+  ENGINE_VERSION="unknown"
+fi
 
 HAS_TINYGO=0
 TINYGO_VERSION=""
@@ -68,6 +72,7 @@ GENERATED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 {
   printf '{\n'
   printf '  "generatedAt": "%s",\n' "$GENERATED_AT"
+  printf '  "engineVersion": "%s",\n' "$ENGINE_VERSION"
   printf '  "goVersion": "%s",\n' "$GO_VERSION"
   if [ "$HAS_TINYGO" -eq 1 ]; then
     printf '  "tinygoVersion": "%s",\n' "$TINYGO_VERSION"

@@ -19,6 +19,8 @@ import {
   type RefObject,
 } from 'react';
 import type { StoragePersistenceStatus } from '../diagnostics/indexedDb';
+import { getAppTitle, getAppVersion } from '../appInfo';
+import { shellGameRegistry } from '../games/shellRegistry';
 import {
   exportAllData,
   getStoragePersistenceStatus,
@@ -92,6 +94,11 @@ export function SettingsModal({
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLElement>(null);
+  const appTitle = getAppTitle();
+  const appVersion = getAppVersion();
+  const engineVersion = shellGameRegistry
+    .listMetadata()
+    .find((game) => game.engineVersion)?.engineVersion;
 
   useFocusTrap(modalRef, {
     active: open,
@@ -605,6 +612,13 @@ export function SettingsModal({
             ) : null}
           </details>
         </div>
+
+        <footer className="hs-modal-footer" aria-label="Application version">
+          <span>
+            {appTitle} v{appVersion}
+          </span>
+          {engineVersion ? <span>Go Engine v{engineVersion}</span> : null}
+        </footer>
       </section>
     </div>
   );

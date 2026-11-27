@@ -1,8 +1,8 @@
-# Phase 0 Spike B: PWA Device & Browser Matrix
+# Phase 0 Spike B & v1.0.0 PWA Device & Browser Matrix
 
-- **Status:** Passed (tested family devices; Galaxy Tab S10 FE pending hardware)
-- **Date:** 2026-11-26
-- **Related:** [D5: Devices](./0005-devices.md), [D15: Machines and OS mapping](./0015-machines-and-os-mapping.md), [docs/plan.md](../plan.md) Section 11.4
+- **Status:** Release verified on tested family devices + automated Chromium E2E/a11y; Galaxy Tab S10 FE still pending hardware unboxing
+- **Date:** 2026-11-27
+- **Related:** [D5: Devices](./0005-devices.md), [D15: Machines and OS mapping](./0015-machines-and-os-mapping.md), [docs/plan.md](../plan.md) Section 11.4 & Section 14
 
 ## Test Origin & Legend
 
@@ -34,5 +34,5 @@
 
 ## Verdict
 
-- **Result:** PWA install, offline execution, update prompt, IndexedDB persistence, Web Audio gesture unlock, input handling, and display sharpness passed across all tested Windows 10/11 and Android devices.
+- **Result:** PWA install, offline execution, update prompt, IndexedDB persistence, Web Audio gesture unlock, input handling, and display sharpness passed across all tested Windows 10/11 and Android devices. Automated Playwright Chromium E2E (`a11y`, `pwa-hardening`, `layout-regression`, `hints-daily-offline`, `sudoku-gameplay`, `profiles-and-settings`) re-verified zero-scroll `100dvh` layout, WCAG 2.1 AA compliance across all 4 theme×mode variants, and offline cold-start execution for `v1.0.0`. Hardware S Pen + touch verification on the Samsung Galaxy Tab S10 FE remains pending device unboxing.
 - **Packaging fallback:** No Phase 8 Tauri or Capacitor wrapper is needed; the installable PWA satisfies the family device matrix.
