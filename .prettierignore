@@ -10,3 +10,4 @@ apps/web/public/wasm
 AGENTS.md
 .agents
 docs/plan.md
+games/sudoku/src/data/starter-bank.json

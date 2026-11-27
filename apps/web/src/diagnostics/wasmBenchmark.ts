@@ -12,12 +12,7 @@ export type SudokuDifficulty = 'easy' | 'medium' | 'hard';
 export const ALL_DIFFICULTIES: readonly SudokuDifficulty[] = ['easy', 'medium', 'hard'];
 
 export type HintStatus =
-  | 'ok'
-  | 'conflict'
-  | 'wrong_entry'
-  | 'unsolvable'
-  | 'solved'
-  | 'no_logical_step';
+  'ok' | 'conflict' | 'wrong_entry' | 'unsolvable' | 'solved' | 'no_logical_step';
 
 export interface WasmRegion {
   readonly kind: 'cell' | 'row' | 'column' | 'box';
@@ -175,9 +170,7 @@ export interface WasmWorkerFailure {
 }
 
 export type WasmWorkerResponse =
-  | WasmWorkerBenchmarkSuccess
-  | WasmWorkerGenerateSuccess
-  | WasmWorkerFailure;
+  WasmWorkerBenchmarkSuccess | WasmWorkerGenerateSuccess | WasmWorkerFailure;
 
 export interface WasmBenchmarkResult {
   readonly variant: WasmVariantInfo;
