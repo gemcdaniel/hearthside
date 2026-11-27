@@ -417,11 +417,11 @@ Done when: all Vitest, Playwright E2E, Go, and build checks pass locally and in 
 
 ### 13.5 Phase 2 exit checklist
 
-- [ ] App shell (`apps/web`), plugin contract (`packages/game-core`), IndexedDB storage + export/import, local profiles, and audio service are complete.
-- [ ] Pure Sudoku reducer passes exhaustive unit tests for D8, D12, D20, and D21 invariants.
-- [ ] Interactive Sudoku UI is responsive and crisp across phone, tablet (touch + S Pen), and 4K desktop in both themes and light/dark modes.
-- [ ] 4-tier progressive WASM hints, starter bank + deterministic offline Daily Puzzle, and per-profile stats work 100% offline.
-- [ ] Playwright E2E suite and GitHub Actions CI are green.
+- [x] App shell (`apps/web`), plugin contract (`packages/game-core`), IndexedDB storage + export/import, local profiles, and audio service are complete.
+- [x] Pure Sudoku reducer passes exhaustive unit tests for D8, D12, D20, and D21 invariants.
+- [x] Interactive Sudoku UI is responsive and crisp across phone, tablet (touch + S Pen), and 4K desktop in both themes and light/dark modes.
+- [x] 4-tier progressive WASM hints, starter bank + deterministic offline Daily Puzzle, and per-profile stats work 100% offline.
+- [ ] Playwright E2E suite and GitHub Actions CI are green (Playwright E2E passes locally; CI E2E job added and ready to run on push).
 
 ## 14. Next step
 

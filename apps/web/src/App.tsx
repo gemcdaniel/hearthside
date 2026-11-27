@@ -64,6 +64,7 @@ export function App() {
   const [settings, setSettings] = useState<ProfileSettings>(createInitialFallbackSettings);
   const [activeLaunch, setActiveLaunch] = useState<ActiveGameLaunch | null>(null);
   const [savedSlotsByGame, setSavedSlotsByGame] = useState<SavedSlotsByGame>({});
+  const [libraryRefreshVersion, setLibraryRefreshVersion] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const initPromiseRef = useRef<Promise<void> | null>(null);
 
@@ -221,6 +222,7 @@ export function App() {
 
   function handleExitToLibrary() {
     setActiveLaunch(null);
+    setLibraryRefreshVersion((v) => v + 1);
     void refreshSavedSlots(activeProfile.id);
   }
 
@@ -258,6 +260,7 @@ export function App() {
             games={games}
             activeProfile={activeProfile}
             savedSlotsByGame={savedSlotsByGame}
+            refreshVersion={libraryRefreshVersion}
             onLaunchGame={handleLaunchGame}
           />
         )}

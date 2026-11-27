@@ -127,3 +127,46 @@ export function RotatePhoneIcon() {
     </IconBase>
   );
 }
+
+export function StatsIcon() {
+  return (
+    <IconBase>
+      <path d="M4 20h16" />
+      <rect x="6" y="12" width="3" height="8" rx="0.5" />
+      <rect x="10.5" y="7" width="3" height="13" rx="0.5" />
+      <rect x="15" y="4" width="3" height="16" rx="0.5" />
+    </IconBase>
+  );
+}
+
+export function TrophyIcon() {
+  return (
+    <IconBase>
+      <path d="M6 9H4a2 2 0 0 1-2-2V5h4" />
+      <path d="M18 9h2a2 2 0 0 0 2-2V5h-4" />
+      <path d="M6 4h12v5a6 6 0 0 1-12 0V4z" />
+      <path d="M12 15v4" />
+      <path d="M8 21h8" />
+    </IconBase>
+  );
+}
+
+export function CalendarIcon() {
+  return (
+    <IconBase>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M16 3v4" />
+      <path d="M8 3v4" />
+      <path d="M3 10h18" />
+    </IconBase>
+  );
+}
+
+export function CloseIcon() {
+  return (
+    <IconBase>
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </IconBase>
+  );
+}

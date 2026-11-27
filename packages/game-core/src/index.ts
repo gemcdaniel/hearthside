@@ -3,6 +3,7 @@ export { APP_DISPLAY_NAME } from './config';
 export type {
   GameCategory,
   GameEvent,
+  GameLibraryExtrasProps,
   GameMetadata,
   GameModeDescriptor,
   GamePlugin,
@@ -30,6 +31,7 @@ export {
 export { GameRegistry, createGameRegistry } from './registry';
 export type {
   BaseGameStats,
+  CachedPuzzleEntry,
   CompletedPuzzleRecord,
   GameStatsRecord,
   GameStorageService,

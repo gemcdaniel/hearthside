@@ -1,4 +1,7 @@
 import type { GameMetadata, Profile, SaveSlotSummary } from '@hearthside/game-core';
+import { useMemo } from 'react';
+import { shellGameRegistry } from '../games/shellRegistry';
+import { createGameStorageService } from '../storage/hearthsideDb';
 import { ProfileAvatar } from './ProfileAvatar';
 
 export type SavedSlotsByGame = Readonly<Record<string, Readonly<Record<string, SaveSlotSummary>>>>;
@@ -7,6 +10,7 @@ interface LibraryViewProps {
   readonly games: readonly GameMetadata[];
   readonly activeProfile: Profile;
   readonly savedSlotsByGame: SavedSlotsByGame;
+  readonly refreshVersion?: number;
   readonly onLaunchGame: (gameId: string, modeId?: string) => void;
 }
 
@@ -61,8 +65,17 @@ export function LibraryView({
   games,
   activeProfile,
   savedSlotsByGame,
+  refreshVersion = 0,
   onLaunchGame,
 }: LibraryViewProps) {
+  const storageByGame = useMemo(() => {
+    const map: Record<string, ReturnType<typeof createGameStorageService>> = {};
+    for (const game of games) {
+      map[game.id] = createGameStorageService(activeProfile.id, game.id);
+    }
+    return map;
+  }, [activeProfile.id, games]);
+
   return (
     <section className="hs-library" aria-label="Game Library">
       <div className="hs-library-welcome">
@@ -84,6 +97,10 @@ export function LibraryView({
       <div className="hs-game-grid">
         {games.map((game) => {
           const gameSaves = savedSlotsByGame[game.id] ?? {};
+          const registryEntry = shellGameRegistry.get(game.id);
+          const LibraryExtras = registryEntry?.LibraryExtras;
+          const gameStorage = storageByGame[game.id];
+
           return (
             <article key={game.id} className="hs-game-card">
               <div className="hs-game-card-top">
@@ -126,6 +143,16 @@ export function LibraryView({
                   );
                 })}
               </div>
+
+              {LibraryExtras && gameStorage ? (
+                <LibraryExtras
+                  activeProfile={activeProfile}
+                  storage={gameStorage}
+                  savedSlots={gameSaves}
+                  refreshVersion={refreshVersion}
+                  onLaunchMode={(modeId) => onLaunchGame(game.id, modeId)}
+                />
+              ) : null}
             </article>
           );
         })}

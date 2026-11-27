@@ -6,6 +6,7 @@ import {
   isProfileAccentId,
   isThemeId,
   type AvatarId,
+  type CachedPuzzleEntry,
   type CompletedPuzzleRecord,
   type GameStatsRecord,
   type GameStorageService,
@@ -19,7 +20,7 @@ import { getSystemThemeMode } from '@hearthside/ui';
 export { getStoragePersistenceStatus, requestStoragePersistence } from '../diagnostics/indexedDb';
 
 export const HEARTHSIDE_DB_NAME = 'hearthside-db';
-export const HEARTHSIDE_DB_VERSION = 1;
+export const HEARTHSIDE_DB_VERSION = 2;
 export const EXPORT_SCHEMA_VERSION = 1;
 export const DEFAULT_PROFILE_ID = 'profile-default-1';
 export const DEFAULT_PROFILE_NAME = 'Player 1';
@@ -30,6 +31,7 @@ const STORE_SETTINGS = 'settings';
 const STORE_SAVES = 'saves';
 const STORE_STATS = 'stats';
 const STORE_COMPLETED = 'completedPuzzles';
+const STORE_DAILY_PUZZLES = 'dailyPuzzles';
 
 const ALL_STORES = [
   STORE_PROFILES,
@@ -75,6 +77,11 @@ function getIndexedDbFactory(): IDBFactory {
 const openDbConnections = new Set<IDBDatabase>();
 let pendingSettingsWrite: Promise<void> = Promise.resolve();
 let activeInitPromise: Promise<InitializedStorageState> | null = null;
+let settingsWriteSeq = 0;
+const latestPendingSettings = new Map<
+  string,
+  { readonly seq: number; readonly settings: ProfileSettings }
+>();
 
 export function openHearthsideDb(): Promise<IDBDatabase> {
   const factory = getIndexedDbFactory();
@@ -110,6 +117,11 @@ export function openHearthsideDb(): Promise<IDBDatabase> {
         });
         completed.createIndex('by_profile', 'profileId', { unique: false });
         completed.createIndex('by_profile_game', ['profileId', 'gameId'], { unique: false });
+      }
+      if (!db.objectStoreNames.contains(STORE_DAILY_PUZZLES)) {
+        db.createObjectStore(STORE_DAILY_PUZZLES, {
+          keyPath: ['gameId', 'cacheKey'],
+        });
       }
     };
 
@@ -273,6 +285,8 @@ function isCompletedPuzzleRecord(value: unknown): value is CompletedPuzzleRecord
     isNonEmptyString(value.gameId) &&
     isNonEmptyString(value.puzzleId) &&
     (value.difficulty === undefined || typeof value.difficulty === 'string') &&
+    (value.mode === undefined || value.mode === 'standard' || value.mode === 'daily') &&
+    (value.dailyDate === undefined || typeof value.dailyDate === 'string') &&
     isNonEmptyString(value.completedAt) &&
     typeof value.elapsedMs === 'number' &&
     Number.isFinite(value.elapsedMs) &&
@@ -280,6 +294,18 @@ function isCompletedPuzzleRecord(value: unknown): value is CompletedPuzzleRecord
     typeof value.hintsUsed === 'number' &&
     Number.isFinite(value.hintsUsed) &&
     value.hintsUsed >= 0
+  );
+}
+
+function isCachedPuzzleEntry(value: unknown): value is CachedPuzzleEntry {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    isNonEmptyString(value.gameId) &&
+    isNonEmptyString(value.cacheKey) &&
+    isNonEmptyString(value.cachedAt) &&
+    'puzzle' in value
   );
 }
 
@@ -359,6 +385,10 @@ export async function saveProfileSettings(
   if (!isProfileSettings(settings)) {
     throw new Error('Invalid profile settings payload.');
   }
+  settingsWriteSeq += 1;
+  const seq = settingsWriteSeq;
+  latestPendingSettings.set(profileId, { seq, settings });
+
   const initBarrier = activeInitPromise ?? Promise.resolve();
   const writeOp = pendingSettingsWrite
     .catch(() => {})
@@ -370,7 +400,12 @@ export async function saveProfileSettings(
         tx.objectStore(STORE_SETTINGS).put(record);
         await transactionDone(tx, 'Save profile settings');
       }),
-    );
+    )
+    .finally(() => {
+      if (latestPendingSettings.get(profileId)?.seq === seq) {
+        latestPendingSettings.delete(profileId);
+      }
+    });
   pendingSettingsWrite = writeOp;
   await writeOp;
 }
@@ -505,10 +540,11 @@ export async function ensureInitialized(): Promise<InitializedStorageState> {
       });
 
       setStoredActiveProfileId(seedProfile.id);
+      const pendingOverride = latestPendingSettings.get(seedProfile.id);
       return {
         profiles: [seedProfile],
         activeProfile: seedProfile,
-        settings: seedSettings,
+        settings: pendingOverride ? pendingOverride.settings : seedSettings,
       };
     }
 
@@ -522,11 +558,12 @@ export async function ensureInitialized(): Promise<InitializedStorageState> {
       setStoredActiveProfileId(activeProfile.id);
     }
     const settings = await readProfileSettingsFromDb(activeProfile.id);
+    const pendingOverride = latestPendingSettings.get(activeProfile.id);
 
     return {
       profiles: existing,
       activeProfile,
-      settings,
+      settings: pendingOverride ? pendingOverride.settings : settings,
     };
   };
 
@@ -627,6 +664,38 @@ export async function listCompletedPuzzles(
   });
 }
 
+export async function getCachedPuzzle<TPuzzle = unknown>(
+  gameId: string,
+  cacheKey: string,
+): Promise<TPuzzle | null> {
+  return withDb(async (db) => {
+    const tx = db.transaction(STORE_DAILY_PUZZLES, 'readonly');
+    const raw: unknown = await requestToPromise(
+      tx.objectStore(STORE_DAILY_PUZZLES).get([gameId, cacheKey]),
+      'Failed to read cached puzzle.',
+    );
+    return isCachedPuzzleEntry(raw) ? (raw.puzzle as TPuzzle) : null;
+  });
+}
+
+export async function putCachedPuzzle<TPuzzle = unknown>(
+  gameId: string,
+  cacheKey: string,
+  puzzle: TPuzzle,
+): Promise<void> {
+  await withDb(async (db) => {
+    const tx = db.transaction(STORE_DAILY_PUZZLES, 'readwrite');
+    const entry: CachedPuzzleEntry<TPuzzle> = {
+      gameId,
+      cacheKey,
+      cachedAt: new Date().toISOString(),
+      puzzle,
+    };
+    tx.objectStore(STORE_DAILY_PUZZLES).put(entry);
+    await transactionDone(tx, 'Cache puzzle record');
+  });
+}
+
 export function createGameStorageService(profileId: string, gameId: string): GameStorageService {
   return {
     loadSave: <TPayload = unknown>(slot: string) => getSave<TPayload>(profileId, gameId, slot),
@@ -652,6 +721,10 @@ export function createGameStorageService(profileId: string, gameId: string): Gam
         gameId,
       }),
     listCompletedPuzzles: () => listCompletedPuzzles(profileId, gameId),
+    loadCachedPuzzle: <TPuzzle = unknown>(cacheKey: string) =>
+      getCachedPuzzle<TPuzzle>(gameId, cacheKey),
+    saveCachedPuzzle: <TPuzzle = unknown>(cacheKey: string, puzzle: TPuzzle) =>
+      putCachedPuzzle<TPuzzle>(gameId, cacheKey, puzzle),
   };
 }
 
@@ -837,6 +910,7 @@ export async function resetHearthsideDbForTests(): Promise<void> {
   activeInitPromise = null;
   await pendingSettingsWrite.catch(() => {});
   pendingSettingsWrite = Promise.resolve();
+  latestPendingSettings.clear();
   if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
     try {
       window.localStorage.removeItem(ACTIVE_PROFILE_STORAGE_KEY);

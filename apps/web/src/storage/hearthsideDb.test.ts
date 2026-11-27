@@ -153,4 +153,22 @@ describe('hearthsideDb storage layer', () => {
     expect(await getProfileSettings(p2.id)).toEqual(p2Settings);
     expect((await p2Storage.loadSave<{ seed: number }>('daily'))?.payload.seed).toBe(20261127);
   });
+
+  it('caches and shares deterministic Daily puzzles across profiles in IndexedDB v2 store', async () => {
+    const init = await ensureInitialized();
+    const p1 = init.activeProfile;
+    const p2 = await createProfile({ name: 'Sam', avatarId: 'fox', accentColor: 'terracotta' });
+
+    const p1Storage = createGameStorageService(p1.id, 'sudoku');
+    const p2Storage = createGameStorageService(p2.id, 'sudoku');
+
+    const cacheKey = 'daily:2026-11-27:easy:0.1.0-dev';
+    expect(await p1Storage.loadCachedPuzzle(cacheKey)).toBeNull();
+
+    const record = { id: 'daily-1', seed: 123456, clues: '530...', solution: '534...' };
+    await p1Storage.saveCachedPuzzle(cacheKey, record);
+
+    expect(await p1Storage.loadCachedPuzzle(cacheKey)).toEqual(record);
+    expect(await p2Storage.loadCachedPuzzle(cacheKey)).toEqual(record);
+  });
 });

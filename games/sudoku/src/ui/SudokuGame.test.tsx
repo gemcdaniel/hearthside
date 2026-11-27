@@ -11,12 +11,17 @@ import {
 } from '@hearthside/game-core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { SudokuHintResponse } from '../engine/hints';
+import { getStarterPuzzle } from '../engine/starterBank';
+import type { PuzzleRecord } from '../engine/types';
+import type { SudokuWasmClient } from '../wasm/sudokuWasmClient';
 import { SudokuGame } from './SudokuGame';
 
 function createMemoryStorage(): GameStorageService {
   const saves = new Map<string, SaveEnvelope>();
   let stats: GameStatsRecord | null = null;
   const completed: CompletedPuzzleRecord[] = [];
+  const cachedPuzzles = new Map<string, unknown>();
 
   return {
     async loadSave<TPayload = unknown>(slot: string) {
@@ -43,6 +48,38 @@ function createMemoryStorage(): GameStorageService {
     async listCompletedPuzzles() {
       return [...completed];
     },
+    async loadCachedPuzzle<TPuzzle = unknown>(cacheKey: string) {
+      return (cachedPuzzles.get(cacheKey) as TPuzzle | undefined) ?? null;
+    },
+    async saveCachedPuzzle<TPuzzle = unknown>(cacheKey: string, puzzle: TPuzzle) {
+      cachedPuzzles.set(cacheKey, puzzle);
+    },
+  };
+}
+
+function createMockWasmClient(
+  overrides: {
+    readonly nextHint?: (board: string, solution: string) => Promise<SudokuHintResponse>;
+    readonly generatePuzzle?: (seed: number) => Promise<PuzzleRecord>;
+  } = {},
+): SudokuWasmClient {
+  return {
+    nextHint:
+      overrides.nextHint ??
+      vi.fn(async (): Promise<SudokuHintResponse> => ({
+        ok: true,
+        engineVersion: '0.1.0-dev',
+        status: 'ok',
+        step: {
+          technique: 'naked_single',
+          difficulty: 'easy',
+          region: { kind: 'cell', index: 0 },
+          drivingCells: [1, 2],
+          placements: [{ cell: 0, digit: 7 }],
+          eliminations: [],
+        },
+      })),
+    generatePuzzle: overrides.generatePuzzle ?? vi.fn(async () => getStarterPuzzle('easy', 1)),
   };
 }
 
@@ -281,5 +318,142 @@ describe('SudokuGame UI', () => {
     await waitFor(() => {
       expect(within(remountGrid).getAllByRole('gridcell')[0]).toHaveTextContent('7');
     });
+  });
+
+  it('guards wrong entries before stepping through 4-tier progressive hints and undo', async () => {
+    const wasmClient = createMockWasmClient({
+      nextHint: vi.fn(async (board: string): Promise<SudokuHintResponse> => {
+        if (board.charAt(0) === '1') {
+          return {
+            ok: true,
+            engineVersion: '0.1.0-dev',
+            status: 'wrong_entry',
+            wrongCells: [0],
+          };
+        }
+        return {
+          ok: true,
+          engineVersion: '0.1.0-dev',
+          status: 'ok',
+          step: {
+            technique: 'naked_single',
+            difficulty: 'easy',
+            region: { kind: 'cell', index: 0 },
+            drivingCells: [1, 2],
+            placements: [{ cell: 0, digit: 7 }],
+            eliminations: [],
+          },
+        };
+      }),
+    });
+
+    const audio = createMockAudio();
+    const services = createTestServices({ audio, flagWrongValues: false });
+    render(<SudokuGame services={services} initialMode="easy" wasmClient={wasmClient} />);
+
+    const grid = await screen.findByRole('grid', { name: '9 by 9 Sudoku board' });
+    const cell0 = within(grid).getAllByRole('gridcell')[0]!;
+
+    // Place unflagged wrong entry 1
+    fireEvent.pointerDown(cell0);
+    fireEvent.click(screen.getByRole('button', { name: /Enter 1,/ }));
+    expect(cell0).toHaveTextContent('1');
+
+    // Hint detects unflagged wrong entry and offers Show / Clear
+    fireEvent.click(screen.getByRole('button', { name: 'Hint' }));
+    const issueCard = await screen.findByTestId('sudoku-hint-card');
+    expect(within(issueCard).getByText('Wrong Entry Found')).toBeInTheDocument();
+    expect(cell0).toHaveAttribute('data-hint-role', 'issue');
+
+    // Clicking Clear removes the wrong entry cleanly
+    fireEvent.click(within(issueCard).getByRole('button', { name: 'Clear' }));
+    expect(cell0).toHaveTextContent('');
+
+    // Now request Hint -> Tier 1 (Box 1), Tier 2 (Naked Single), Tier 3 (Target highlight + preview), Tier 4 (Apply)
+    fireEvent.click(screen.getByRole('button', { name: 'Hint' }));
+    const tier1Card = await screen.findByTestId('sudoku-hint-card');
+    expect(within(tier1Card).getByText(/Hint 1\/4/)).toBeInTheDocument();
+
+    fireEvent.click(within(tier1Card).getByRole('button', { name: 'Next Hint' }));
+    expect(
+      within(screen.getByTestId('sudoku-hint-card')).getByText(/Hint 2\/4 · Naked Single/),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next Hint' }));
+    expect(
+      within(screen.getByTestId('sudoku-hint-card')).getByText(/Hint 3\/4 · Naked Single/),
+    ).toBeInTheDocument();
+    expect(cell0).toHaveAttribute('data-hint-role', 'target');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply Step' }));
+    expect(cell0).toHaveTextContent('7');
+    expect(audio.playSfx).toHaveBeenCalledWith('hint');
+
+    // Undo reverses Tier 4 hint placement
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(cell0).toHaveTextContent('');
+  });
+
+  it('caches generated Daily Puzzle offline, updates stats, and shows Victory modal with Personal Best', async () => {
+    const storage = createMemoryStorage();
+    const nearlySolved: PuzzleRecord = {
+      id: 'daily-test-nearly-solved',
+      seed: 98765,
+      engineVersion: '0.1.0-dev',
+      difficulty: 'easy',
+      techniquesRequired: ['naked_single'],
+      clues: '023968154549371682186254379432716598615489237978532416257843961391627845864195723',
+      solution: '723968154549371682186254379432716598615489237978532416257843961391627845864195723',
+    };
+    const generateSpy = vi.fn(async () => nearlySolved);
+    const wasmClient = createMockWasmClient({ generatePuzzle: generateSpy });
+    const services = createTestServices({ storage });
+
+    const first = render(
+      <SudokuGame
+        services={services}
+        initialMode="daily:2026-11-27:easy"
+        wasmClient={wasmClient}
+      />,
+    );
+
+    const grid = await screen.findByRole('grid', { name: '9 by 9 Sudoku board' });
+    expect(generateSpy).toHaveBeenCalledTimes(1);
+
+    // Complete final cell 0 with 7 -> Victory modal with New Personal Best!
+    const cell0 = within(grid).getAllByRole('gridcell')[0]!;
+    fireEvent.pointerDown(cell0);
+    fireEvent.click(screen.getByRole('button', { name: /Enter 7,/ }));
+
+    const victoryDialog = await screen.findByRole('dialog', { name: 'Puzzle solved' });
+    expect(within(victoryDialog).getByText('New Personal Best!')).toBeInTheDocument();
+    expect(within(victoryDialog).getByText(/Daily \(2026-11-27\)/)).toBeInTheDocument();
+
+    // View Stats button opens live Stats modal cleanly in front of Victory modal
+    fireEvent.click(within(victoryDialog).getByRole('button', { name: 'View Stats' }));
+    const statsDialog = await screen.findByRole('dialog', { name: 'Sudoku Statistics' });
+    expect(within(statsDialog).getByText('100%')).toBeInTheDocument();
+    expect(statsDialog.parentElement).toHaveClass('hs-sudoku-stats-backdrop');
+    expect(
+      victoryDialog.compareDocumentPosition(statsDialog) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // Closing Stats returns cleanly to Victory modal
+    fireEvent.click(within(statsDialog).getByRole('button', { name: 'Close Statistics' }));
+    expect(screen.queryByRole('dialog', { name: 'Sudoku Statistics' })).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Puzzle solved' })).toBeInTheDocument();
+
+    first.unmount();
+
+    // Launching same Daily date again uses IndexedDB cache without calling generatePuzzle a second time
+    render(
+      <SudokuGame
+        services={services}
+        initialMode="daily:2026-11-27:easy"
+        wasmClient={wasmClient}
+      />,
+    );
+    await screen.findByRole('grid', { name: '9 by 9 Sudoku board' });
+    expect(generateSpy).toHaveBeenCalledTimes(1);
   });
 });

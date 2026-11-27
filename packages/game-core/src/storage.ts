@@ -32,9 +32,18 @@ export interface CompletedPuzzleRecord {
   readonly gameId: string;
   readonly puzzleId: string;
   readonly difficulty?: string;
+  readonly mode?: 'standard' | 'daily';
+  readonly dailyDate?: string;
   readonly completedAt: string;
   readonly elapsedMs: number;
   readonly hintsUsed: number;
+}
+
+export interface CachedPuzzleEntry<TPuzzle = unknown> {
+  readonly gameId: string;
+  readonly cacheKey: string;
+  readonly cachedAt: string;
+  readonly puzzle: TPuzzle;
 }
 
 export interface GameStorageService {
@@ -46,4 +55,6 @@ export interface GameStorageService {
   saveStats<TStats = unknown>(record: GameStatsRecord<TStats>): Promise<void>;
   recordCompletedPuzzle(record: CompletedPuzzleRecord): Promise<void>;
   listCompletedPuzzles(): Promise<readonly CompletedPuzzleRecord[]>;
+  loadCachedPuzzle<TPuzzle = unknown>(cacheKey: string): Promise<TPuzzle | null>;
+  saveCachedPuzzle<TPuzzle = unknown>(cacheKey: string, puzzle: TPuzzle): Promise<void>;
 }

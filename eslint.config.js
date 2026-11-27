@@ -49,6 +49,15 @@ export default tseslint.config(
     },
   },
   {
+    files: ['apps/web/e2e/**/*.{ts,tsx}'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+      },
+    },
+  },
+  {
     files: ['packages/game-core/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [

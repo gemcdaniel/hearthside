@@ -1,5 +1,50 @@
 export { sudokuMetadata } from './metadata';
 export {
+  STARTER_OVERFLOW_SEED_BASE,
+  SUDOKU_ENGINE_VERSION,
+  computeDailySeed,
+  computeOverflowSeed,
+  dailyCacheKey,
+  dailySlotKey,
+  getLocalDateString,
+  isSudokuDifficulty,
+  isValidDateKey,
+  parseSudokuLaunchMode,
+  type ParsedSudokuLaunch,
+} from './engine/daily';
+export {
+  TECHNIQUE_GUIDES,
+  advanceActiveHint,
+  boardToDigitsString,
+  createActiveHintFromResponse,
+  formatCellCoord,
+  formatHintTierMessage,
+  formatRegionLabel,
+  getRegionCells,
+  getTechniqueGuide,
+  getTier1Region,
+  type ActiveHintState,
+  type HintRegion,
+  type HintStatus,
+  type HintStep,
+  type SudokuHintResponse,
+  type TechniqueGuide,
+} from './engine/hints';
+export {
+  SUDOKU_STATS_SCHEMA_VERSION,
+  computeDailyStreaks,
+  createEmptySudokuStats,
+  getAverageTimeMs,
+  getWinRatePercent,
+  normalizeSudokuStats,
+  recordGameStarted,
+  recordGameWon,
+  type DifficultyStats,
+  type RecordGameWonInput,
+  type SudokuProfileStats,
+} from './engine/stats';
+export { getDefaultSudokuWasmClient, type SudokuWasmClient } from './wasm/sudokuWasmClient';
+export {
   ALL_DIGITS_MASK,
   BOARD_SIZE,
   BOXES,
@@ -86,4 +131,7 @@ export type {
 export { SudokuBoard, type SudokuBoardProps } from './ui/SudokuBoard';
 export { SudokuControls, type SudokuControlsProps } from './ui/SudokuControls';
 export { SudokuGame, type SudokuGameProps } from './ui/SudokuGame';
+export { SudokuLibraryExtras } from './ui/SudokuLibraryExtras';
+export { SudokuStatsModal, type SudokuStatsModalProps } from './ui/SudokuStatsModal';
+export { SudokuVictoryModal, type SudokuVictoryModalProps } from './ui/SudokuVictoryModal';
 export { formatElapsedTime } from './ui/formatTime';

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import {
   AutoShowIcon,
   CheckIcon,
@@ -17,6 +18,10 @@ export interface SudokuControlsProps {
   readonly autoShowEnabled: boolean;
   readonly canErase: boolean;
   readonly disabled: boolean;
+  readonly hintActive?: boolean;
+  readonly hintLoading?: boolean;
+  readonly hintTier?: 1 | 2 | 3;
+  readonly hintCard?: ReactNode;
   readonly remainingCounts: Record<number, number>;
   readonly onUndo: () => void;
   readonly onRedo: () => void;
@@ -24,6 +29,7 @@ export interface SudokuControlsProps {
   readonly onToggleNotesMode: () => void;
   readonly onToggleAutoShow: () => void;
   readonly onCheckBoard: () => void;
+  readonly onHint: () => void;
   readonly onDigitInput: (digit: number) => void;
 }
 
@@ -34,6 +40,10 @@ export function SudokuControls({
   autoShowEnabled,
   canErase,
   disabled,
+  hintActive = false,
+  hintLoading = false,
+  hintTier,
+  hintCard,
   remainingCounts,
   onUndo,
   onRedo,
@@ -41,8 +51,17 @@ export function SudokuControls({
   onToggleNotesMode,
   onToggleAutoShow,
   onCheckBoard,
+  onHint,
   onDigitInput,
 }: SudokuControlsProps) {
+  const hintLabel = hintLoading
+    ? 'Thinking'
+    : hintTier === 3
+      ? 'Apply'
+      : hintTier
+        ? `Hint ${hintTier}/4`
+        : 'Hint';
+
   return (
     <div className="hs-sudoku-controls">
       <div className="hs-sudoku-actions" role="toolbar" aria-label="Puzzle actions">
@@ -139,33 +158,47 @@ export function SudokuControls({
         <button
           type="button"
           className="hs-sudoku-tool-btn hs-sudoku-hint-btn"
-          disabled
-          aria-label="Hint (coming in Run 4)"
-          title="4-tier WASM hints arrive in Run 4"
+          aria-label="Hint"
+          aria-pressed={hintActive}
+          disabled={disabled || hintLoading}
+          onClick={onHint}
         >
           <HintIcon />
-          <span className="hs-sudoku-tool-label">Hint</span>
+          <span className="hs-sudoku-tool-label">{hintLabel}</span>
+          <span className="hs-sudoku-kbd" aria-hidden="true">
+            H
+          </span>
         </button>
       </div>
 
-      <div className="hs-sudoku-numpad" role="group" aria-label="Number pad">
-        {PAD_DIGITS.map((digit) => {
-          const remaining = remainingCounts[digit] ?? 0;
-          return (
-            <button
-              key={digit}
-              type="button"
-              className="hs-sudoku-num-btn"
-              data-depleted={remaining === 0 ? 'true' : 'false'}
-              disabled={disabled}
-              aria-label={`${notesMode ? 'Note' : 'Enter'} ${digit}, ${remaining} remaining`}
-              onClick={() => onDigitInput(digit)}
-            >
-              <span className="hs-sudoku-num-digit">{digit}</span>
-              <span className="hs-sudoku-num-remaining">{remaining}</span>
-            </button>
-          );
-        })}
+      <div className="hs-sudoku-numpad-wrap">
+        <div className="hs-sudoku-numpad" role="group" aria-label="Number pad">
+          {PAD_DIGITS.map((digit) => {
+            const remaining = remainingCounts[digit] ?? 0;
+            return (
+              <button
+                key={digit}
+                type="button"
+                className="hs-sudoku-num-btn"
+                data-depleted={remaining === 0 ? 'true' : 'false'}
+                disabled={disabled}
+                aria-label={`${notesMode ? 'Note' : 'Enter'} ${digit}, ${remaining} remaining`}
+                onClick={() => onDigitInput(digit)}
+              >
+                <span className="hs-sudoku-num-digit">{digit}</span>
+                <span className="hs-sudoku-num-remaining">{remaining}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="hs-sudoku-hint-dock" data-active={hintCard ? 'true' : 'false'}>
+          {hintCard ?? (
+            <p className="hs-sudoku-hint-idle" aria-hidden="true">
+              Need a nudge? Tap Hint for step-by-step logical clues.
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

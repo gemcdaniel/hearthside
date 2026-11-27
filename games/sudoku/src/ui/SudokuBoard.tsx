@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { BOARD_SIZE, COL_OF, GRID_SIZE, ROW_OF, hasDigitBit } from '../engine/boardMath';
+import { BOARD_SIZE, COL_OF, GRID_SIZE, ROW_OF, digitBit, hasDigitBit } from '../engine/boardMath';
+import { getRegionCells, getTier1Region, type ActiveHintState } from '../engine/hints';
 import {
   getDuplicateConflicts,
   getHighlightMap,
@@ -17,6 +18,7 @@ export interface SudokuBoardProps {
   readonly state: SudokuState;
   readonly flagDuplicateConflicts: boolean;
   readonly flagWrongValues: boolean;
+  readonly activeHint?: ActiveHintState;
   readonly onSelectCell: (cell: number) => void;
   readonly onResume: () => void;
   readonly stageOverlay?: ReactNode;
@@ -26,6 +28,7 @@ export function SudokuBoard({
   state,
   flagDuplicateConflicts,
   flagWrongValues,
+  activeHint,
   onSelectCell,
   onResume,
   stageOverlay,
@@ -42,6 +45,38 @@ export function SudokuBoard({
   if (flagWrongValues) {
     for (const idx of getWrongValueCells(state.cells, state.puzzle.solution)) {
       wrongSet.add(idx);
+    }
+  }
+
+  const issueCellSet = new Set<number>();
+  const regionCellSet = new Set<number>();
+  const driverCellSet = new Set<number>();
+  const placementByCell = new Map<number, number>();
+  const elimMaskByCell = new Map<number, number>();
+
+  if (!state.paused && activeHint) {
+    if (activeHint.kind === 'issue') {
+      for (const idx of activeHint.cells) {
+        issueCellSet.add(idx);
+      }
+    } else if (activeHint.kind === 'step') {
+      const region =
+        activeHint.tier === 1 ? getTier1Region(activeHint.step) : activeHint.step.region;
+      for (const idx of getRegionCells(region)) {
+        regionCellSet.add(idx);
+      }
+      if (activeHint.tier === 3) {
+        for (const idx of activeHint.step.drivingCells) {
+          driverCellSet.add(idx);
+        }
+        for (const p of activeHint.step.placements) {
+          placementByCell.set(p.cell, p.digit);
+        }
+        for (const e of activeHint.step.eliminations) {
+          const prev = elimMaskByCell.get(e.cell) ?? 0;
+          elimMaskByCell.set(e.cell, prev | digitBit(e.digit));
+        }
+      }
     }
   }
 
@@ -81,6 +116,22 @@ export function SudokuBoard({
             const isConflict = !state.paused && conflictSet.has(idx);
             const isWrong = !state.paused && wrongSet.has(idx);
             const visibleNotesMask = state.paused ? 0 : getVisibleNotes(state, idx);
+            const elimMask = elimMaskByCell.get(idx) ?? 0;
+            const previewDigit = placementByCell.get(idx);
+
+            const isHintIssue = issueCellSet.has(idx);
+            const isHintTarget = previewDigit !== undefined || elimMask !== 0;
+            const isHintDriver = driverCellSet.has(idx);
+            const isHintRegion = regionCellSet.has(idx);
+            const hintRole = isHintIssue
+              ? 'issue'
+              : isHintTarget
+                ? 'target'
+                : isHintDriver
+                  ? 'driver'
+                  : isHintRegion
+                    ? 'region'
+                    : 'none';
 
             const ariaParts = [`Row ${row + 1}, Column ${col + 1}`];
             if (!state.paused) {
@@ -91,6 +142,9 @@ export function SudokuBoard({
               }
               if (isConflict) ariaParts.push('conflict');
               if (isWrong) ariaParts.push('wrong value');
+              if (isHintIssue) ariaParts.push('hint issue');
+              if (isHintTarget) ariaParts.push('hint target');
+              if (isHintDriver) ariaParts.push('hint clue cell');
             }
             if (isSelected) ariaParts.push('selected');
 
@@ -101,6 +155,7 @@ export function SudokuBoard({
                 role="gridcell"
                 className="hs-sudoku-cell"
                 data-highlight={highlightKind}
+                data-hint-role={hintRole}
                 data-given={cell.given ? 'true' : 'false'}
                 data-conflict={isConflict ? 'true' : 'false'}
                 data-wrong={isWrong ? 'true' : 'false'}
@@ -117,13 +172,21 @@ export function SudokuBoard({
               >
                 {!state.paused && cell.value !== 0 ? (
                   <span className="hs-sudoku-digit">{cell.value}</span>
+                ) : !state.paused && previewDigit !== undefined ? (
+                  <span className="hs-sudoku-hint-preview" aria-hidden="true">
+                    {previewDigit}
+                  </span>
                 ) : null}
 
-                {!state.paused && cell.value === 0 && visibleNotesMask !== 0 ? (
+                {!state.paused &&
+                cell.value === 0 &&
+                previewDigit === undefined &&
+                (visibleNotesMask !== 0 || elimMask !== 0) ? (
                   <span className="hs-sudoku-notes" aria-hidden="true">
                     {NOTE_DIGITS.map((digit) => {
-                      const shown = hasDigitBit(visibleNotesMask, digit);
-                      const matchesSelectedDigit = shown && selectedDigit === digit;
+                      const isElim = hasDigitBit(elimMask, digit);
+                      const shown = hasDigitBit(visibleNotesMask, digit) || isElim;
+                      const matchesSelectedDigit = shown && !isElim && selectedDigit === digit;
                       return (
                         <span
                           key={digit}
@@ -131,6 +194,7 @@ export function SudokuBoard({
                           data-note-digit={digit}
                           data-active={shown ? 'true' : 'false'}
                           data-note-match={matchesSelectedDigit ? 'true' : 'false'}
+                          data-hint-elim={isElim ? 'true' : 'false'}
                         >
                           {shown ? digit : ''}
                         </span>
@@ -143,9 +207,17 @@ export function SudokuBoard({
                   <span className="hs-cell-flag hs-cell-flag-conflict" aria-hidden="true">
                     !
                   </span>
-                ) : isWrong ? (
+                ) : isWrong || isHintIssue ? (
                   <span className="hs-cell-flag hs-cell-flag-wrong" aria-hidden="true">
                     ×
+                  </span>
+                ) : isHintTarget ? (
+                  <span className="hs-cell-flag hs-cell-flag-hint-target" aria-hidden="true">
+                    ★
+                  </span>
+                ) : isHintDriver ? (
+                  <span className="hs-cell-flag hs-cell-flag-hint-driver" aria-hidden="true">
+                    ◆
                   </span>
                 ) : null}
               </button>
