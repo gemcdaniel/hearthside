@@ -109,7 +109,7 @@ export function SudokuControls({
 
         <button
           type="button"
-          className="hs-sudoku-tool-btn"
+          className="hs-sudoku-tool-btn hs-sudoku-notes-btn"
           aria-label="Notes"
           aria-pressed={notesMode}
           disabled={disabled}
@@ -117,6 +117,13 @@ export function SudokuControls({
         >
           <NotesIcon />
           <span className="hs-sudoku-tool-label">Notes</span>
+          <span
+            className="hs-toggle-state"
+            data-state={notesMode ? 'on' : 'off'}
+            aria-hidden="true"
+          >
+            {notesMode ? 'ON' : 'OFF'}
+          </span>
           <span className="hs-sudoku-kbd" aria-hidden="true">
             N
           </span>
@@ -136,6 +143,13 @@ export function SudokuControls({
             <span className="hs-autoshow-dot" aria-hidden="true" />
           </span>
           <span className="hs-sudoku-tool-label">Auto-Show</span>
+          <span
+            className="hs-toggle-state"
+            data-state={autoShowEnabled ? 'on' : 'off'}
+            aria-hidden="true"
+          >
+            {autoShowEnabled ? 'ON' : 'OFF'}
+          </span>
           <span className="hs-sudoku-kbd" aria-hidden="true">
             A
           </span>
@@ -172,7 +186,12 @@ export function SudokuControls({
       </div>
 
       <div className="hs-sudoku-numpad-wrap">
-        <div className="hs-sudoku-numpad" role="group" aria-label="Number pad">
+        <div
+          className="hs-sudoku-numpad"
+          role="group"
+          aria-label="Number pad"
+          data-notes-mode={notesMode ? 'true' : 'false'}
+        >
           {PAD_DIGITS.map((digit) => {
             const remaining = remainingCounts[digit] ?? 0;
             return (

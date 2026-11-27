@@ -178,8 +178,17 @@ describe('SudokuGame UI', () => {
     expect(cell1).toHaveAttribute('data-highlight', 'peer');
     expect(cell80).toHaveAttribute('data-highlight', 'none');
 
+    const notesBtn = screen.getByRole('button', { name: 'Notes' });
+    const numpad = screen.getByRole('group', { name: 'Number pad' });
+    expect(notesBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(notesBtn).toHaveTextContent('OFF');
+    expect(numpad).toHaveAttribute('data-notes-mode', 'false');
+
     // Enter manual note 7 in cell 0
-    fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
+    fireEvent.click(notesBtn);
+    expect(notesBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(notesBtn).toHaveTextContent('ON');
+    expect(numpad).toHaveAttribute('data-notes-mode', 'true');
     fireEvent.click(screen.getByRole('button', { name: /Note 7,/ }));
     const note7 = cell0!.querySelector('[data-note-digit="7"]');
     expect(note7).toHaveAttribute('data-active', 'true');
@@ -196,10 +205,13 @@ describe('SudokuGame UI', () => {
     const statusRail = screen.getByTestId('sudoku-status-rail');
     expect(statusRail).toHaveAttribute('data-has-message', 'false');
 
-    // Toggle Auto-Show ON -> button reports aria-pressed=true, candidates appear, zero banner
+    // Toggle Auto-Show ON -> button reports aria-pressed=true and ON badge, candidates appear, zero banner
     const autoShowBtn = screen.getByRole('button', { name: 'Auto-Show' });
+    expect(autoShowBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(autoShowBtn).toHaveTextContent('OFF');
     fireEvent.click(autoShowBtn);
     expect(autoShowBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(autoShowBtn).toHaveTextContent('ON');
     expect(screen.queryByText(/Auto-Show Candidates active/i)).not.toBeInTheDocument();
     expect(statusRail).toHaveAttribute('data-has-message', 'false');
     expect(cell0!.querySelector('[data-note-digit="1"]')).toHaveAttribute('data-active', 'true');
@@ -207,6 +219,7 @@ describe('SudokuGame UI', () => {
     // Toggle Auto-Show OFF -> manual note 7 returns untouched while auto-show candidates vanish
     fireEvent.click(autoShowBtn);
     expect(autoShowBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(autoShowBtn).toHaveTextContent('OFF');
     expect(cell0!.querySelector('[data-note-digit="7"]')).toHaveAttribute('data-active', 'true');
     expect(cell0!.querySelector('[data-note-digit="1"]')).toHaveAttribute('data-active', 'false');
   });
