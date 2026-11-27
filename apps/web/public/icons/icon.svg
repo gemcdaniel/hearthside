@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Hearthside icon">
+  <rect width="512" height="512" rx="96" fill="#1f2937" />
+  <rect x="96" y="96" width="320" height="320" rx="28" fill="#f8f6f2" />
+  <line x1="202.67" y1="96" x2="202.67" y2="416" stroke="#1f2937" stroke-width="14" />
+  <line x1="309.33" y1="96" x2="309.33" y2="416" stroke="#1f2937" stroke-width="14" />
+  <line x1="96" y1="202.67" x2="416" y2="202.67" stroke="#1f2937" stroke-width="14" />
+  <line x1="96" y1="309.33" x2="416" y2="309.33" stroke="#1f2937" stroke-width="14" />
+  <rect x="214" y="214" width="84" height="84" rx="12" fill="#0284c7" />
+  <rect x="96" y="96" width="320" height="320" rx="28" fill="none" stroke="#334155" stroke-width="16" />
+</svg>

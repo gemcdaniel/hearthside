@@ -1,0 +1,26 @@
+services:
+  hearthside-web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    ports:
+     - 8082:80
+#     networks:
+#       - traefik
+#     labels:
+#       - 'traefik.enable=true'
+#       - 'traefik.docker.network=${TRAEFIK_NETWORK:-traefik}'
+#       - 'traefik.http.routers.hearthside-web.rule=Host(`hearthside.example.com`)'
+#       - 'traefik.http.routers.hearthside-web.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}'
+#       - 'traefik.http.routers.hearthside-web.tls=true'
+#       - 'traefik.http.routers.hearthside-web.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}'
+#       - 'traefik.http.routers.hearthside-web.middlewares=hearthside-headers@docker${TRAEFIK_INTERNAL_MIDDLEWARE:+,}${TRAEFIK_INTERNAL_MIDDLEWARE:-}'
+#       - 'traefik.http.services.hearthside-web.loadbalancer.server.port=80'
+#       - 'traefik.http.middlewares.hearthside-headers.headers.referrerPolicy=no-referrer'
+#       - 'traefik.http.middlewares.hearthside-headers.headers.contentTypeNosniff=true'
+
+# networks:
+#   traefik:
+#     external: true
+#     name: ${TRAEFIK_NETWORK:-traefik}
