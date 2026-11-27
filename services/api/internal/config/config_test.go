@@ -2,6 +2,8 @@ package config
 
 import (
 	"log/slog"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -39,12 +41,21 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.BootstrapToken != "" {
 		t.Fatalf("BootstrapToken = %q, want empty", cfg.BootstrapToken)
 	}
+	if cfg.WebDir != "" {
+		t.Fatalf("WebDir = %q, want empty", cfg.WebDir)
+	}
 }
 
 func TestLoadCustomAndOIDC(t *testing.T) {
+	webDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(webDir, "index.html"), []byte("<!doctype html>"), 0o600); err != nil {
+		t.Fatalf("write index.html failed: %v", err)
+	}
+
 	cfg, err := LoadFromLookup(mapLookup(map[string]string{
 		"HEARTHSIDE_ADDR":               ":9090",
 		"HEARTHSIDE_DB_PATH":            "/data/custom.db",
+		"HEARTHSIDE_WEB_DIR":            webDir,
 		"HEARTHSIDE_PUBLIC_BASE_URL":    "https://hearthside.example.com/",
 		"HEARTHSIDE_COOKIE_SECURE":      "false",
 		"HEARTHSIDE_LOG_LEVEL":          "debug",
@@ -63,6 +74,9 @@ func TestLoadCustomAndOIDC(t *testing.T) {
 	}
 	if cfg.DBPath != "/data/custom.db" {
 		t.Fatalf("DBPath = %q, want /data/custom.db", cfg.DBPath)
+	}
+	if cfg.WebDir != filepath.Clean(webDir) {
+		t.Fatalf("WebDir = %q, want %q", cfg.WebDir, filepath.Clean(webDir))
 	}
 	if cfg.PublicBaseURL != "https://hearthside.example.com" {
 		t.Fatalf("PublicBaseURL = %q", cfg.PublicBaseURL)
@@ -121,6 +135,29 @@ func TestLoadOIDCDisabledWhenIncomplete(t *testing.T) {
 			}
 			if cfg.OIDC.Enabled() {
 				t.Fatalf("OIDC.Enabled() = true, want false")
+			}
+		})
+	}
+}
+
+func TestLoadWebDirValidationErrors(t *testing.T) {
+	emptyDir := t.TempDir()
+	regularFile := filepath.Join(emptyDir, "not-a-dir")
+	if err := os.WriteFile(regularFile, []byte("hi"), 0o600); err != nil {
+		t.Fatalf("write file failed: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		val  string
+	}{
+		{name: "missing path", val: filepath.Join(emptyDir, "missing")},
+		{name: "not a directory", val: regularFile},
+		{name: "missing index.html", val: emptyDir},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := LoadFromLookup(mapLookup(map[string]string{"HEARTHSIDE_WEB_DIR": tc.val})); err == nil {
+				t.Fatalf("expected error for HEARTHSIDE_WEB_DIR=%q, got nil", tc.val)
 			}
 		})
 	}

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -38,6 +39,7 @@ func (o OIDCConfig) Enabled() bool {
 type Config struct {
 	Addr           string
 	DBPath         string
+	WebDir         string
 	PublicBaseURL  string
 	CookieSecure   bool
 	LogLevel       slog.Level
@@ -68,6 +70,13 @@ func LoadFromLookup(lookup LookupFunc) (Config, error) {
 	}
 	if v, ok := lookupNonEmpty(lookup, "HEARTHSIDE_DB_PATH"); ok {
 		cfg.DBPath = v
+	}
+	if v, ok := lookupNonEmpty(lookup, "HEARTHSIDE_WEB_DIR"); ok {
+		cleaned := filepath.Clean(v)
+		if err := validateWebDir(cleaned); err != nil {
+			return Config{}, err
+		}
+		cfg.WebDir = cleaned
 	}
 	if v, ok := lookupNonEmpty(lookup, "HEARTHSIDE_PUBLIC_BASE_URL"); ok {
 		cfg.PublicBaseURL = strings.TrimRight(v, "/")
@@ -158,6 +167,25 @@ func validateHTTPURL(name, raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return fmt.Errorf("%s must be a valid http or https URL (got %q)", name, raw)
+	}
+	return nil
+}
+
+func validateWebDir(dir string) error {
+	info, err := os.Stat(dir)
+	if err != nil {
+		return fmt.Errorf("HEARTHSIDE_WEB_DIR %q is not accessible: %w", dir, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("HEARTHSIDE_WEB_DIR %q must be a directory", dir)
+	}
+	indexPath := filepath.Join(dir, "index.html")
+	indexInfo, err := os.Stat(indexPath)
+	if err != nil {
+		return fmt.Errorf("HEARTHSIDE_WEB_DIR %q must contain index.html: %w", dir, err)
+	}
+	if indexInfo.IsDir() {
+		return fmt.Errorf("HEARTHSIDE_WEB_DIR %q index.html must be a regular file", dir)
 	}
 	return nil
 }

@@ -71,12 +71,20 @@ func NewHandler(deps Dependencies) http.Handler {
 	mux.Handle("PATCH /api/v1/household/profiles/{id}", requireAuth(store, updateProfileHandler(store, logger)))
 	mux.Handle("DELETE /api/v1/household/profiles/{id}", requireAuth(store, deleteProfileHandler(store, logger)))
 
+	// Strict /api boundary so unmatched API paths never fall through to SPA index.html.
+	mux.HandleFunc("/api", apiNotFoundHandler)
+	mux.HandleFunc("/api/", apiNotFoundHandler)
+
+	if cfg.WebDir != "" {
+		mux.Handle("/", newStaticPWAHandler(cfg.WebDir))
+	}
+
 	return RequestIDMiddleware(
 		LoggingMiddleware(
 			logger,
 			RecoveryMiddleware(
 				logger,
-				CSRFMiddleware(cfg.PublicBaseURL, mux),
+				CSRFMiddleware(cfg.PublicBaseURL, pathTraversalGuard(mux)),
 			),
 		),
 	)

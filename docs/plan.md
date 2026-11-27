@@ -84,7 +84,7 @@ D1 to D29 are confirmed unless noted as Proposed.
 
 **D9. Child accounts (confirmed).** Child profiles sit under a parent's household account, so parents and children can play together within one household. Children do not need their own login, password, or email for this model, even though they may have Google Family accounts. Adult OIDC sign-in uses standard OpenID Connect Discovery + PKCE with an explicit HTTPS redirect URI (e.g., Google Cloud OAuth or a self-hosted homelab IdP), and offline play never depends on it.
 
-**D10. Access and deployment (confirmed).** Docker Compose behind Traefik with HTTPS (`hearthside.example.com`), internal-only during early phases and opened externally when ready (D16). Either way the PWA and API are served over HTTPS, which service workers require.
+**D10. Access and deployment (confirmed).** Single consolidated container running the Go binary + `/srv/web` static PWA (`HEARTHSIDE_WEB_DIR`) via Docker Compose behind Traefik with HTTPS (`hearthside.example.com`), internal-only during early phases and opened externally when ready (D16). Either way the PWA and API are served over HTTPS, which service workers require.
 
 **D11. Code hosting (confirmed).** Private GitHub repository named `hearthside` (D13), with GitHub Actions CI required on `main`.
 
@@ -117,7 +117,7 @@ D1 to D29 are confirmed unless noted as Proposed.
 
 **D24. Audio rollout (confirmed).** Phase 2 built the full Web Audio service (independent SFX and Music mute/volume toggles persisted per profile, unlocked on first pointer or keyboard gesture) with synthesized SFX cues. Phase 3 delivers **procedural Web Audio ambient music** tailored per theme (**Clean Minimal**: airy crystalline pentatonic/major-7th tones; **Warm Hearthside**: cozy low-passed felt-piano / mellow chord progressions) for v1.0, requiring zero external audio files or network fetches. Playback uses click-free linear/target envelopes (~150–300ms fades, never `exponentialRampToValueAtTime(0, ...)`), respects browser autoplay policy, crossfades smoothly on live theme changes, and pauses/resumes automatically on `document.visibilitychange`, while keeping the `MusicChannel` interface extensible for future file-backed `.ogg`/`.mp3` tracks without changing the Settings UI.
 
-**D25. Same-origin `/api/*` routing & cookie sessions (confirmed).** Serve the Go API at `/api/*` on `hearthside.example.com` behind Traefik alongside the web PWA so frontend and backend share one origin. Browser sessions use `HttpOnly`, `Secure` (configurable `false` only for local HTTP dev), `SameSite=Lax` cookies backed by hashed opaque tokens in SQLite, with `Origin`/`Referer` verification on mutating endpoints and Workbox `navigateFallbackDenylist: [/^\/api\//]` so service-worker navigation fallback never intercepts API or OAuth callback routes.
+**D25. Same-origin `/api/*` routing & cookie sessions (confirmed).** Serve both the built PWA (`HEARTHSIDE_WEB_DIR=/srv/web` with pre-compressed `.gz` assets and SPA fallback) and `/api/*` from the single Go API container on `hearthside.example.com` behind Traefik so frontend and backend share one origin without an extra web proxy container. Unmatched `/api/*` paths return JSON `404`. Browser sessions use `HttpOnly`, `Secure` (configurable `false` only for local HTTP dev), `SameSite=Lax` cookies backed by hashed opaque tokens in SQLite, with `Origin`/`Referer` verification on mutating endpoints and Workbox `navigateFallbackDenylist: [/^\/api\//]` so service-worker navigation fallback never intercepts API or OAuth callback routes.
 
 **D26. Stdlib `net/http` + pure-Go `modernc.org/sqlite` (confirmed).** `services/api` uses Go's standard library `net/http` router (`METHOD /path`), `log/slog` structured JSON logging (zero PII, emails, passwords, or session tokens), and pure-Go `modernc.org/sqlite` (`CGO_ENABLED=0`) with WAL mode, `foreign_keys=ON`, `busy_timeout=5000`, `MaxOpenConns(1)`, and embedded SQL migrations (`embed.FS`). `engine/sudoku` remains strictly free of HTTP, DB, and OS filesystem imports.
 
@@ -149,7 +149,7 @@ One TypeScript codebase delivers Windows, Linux, Android phone/tablet and browse
 - `engine/sudoku/`: Go module — solver, generator and grader, shared by backend and WASM.
 - `services/api/`: Go module — backend (Phase 4+).
 - `assets/`: art, audio, fonts, and `manifest.json`.
-- `deploy/`: Dockerfile, nginx config, and Docker Compose with Traefik labels.
+- `deploy/`: unified multi-stage `Dockerfile`, `.env.example`, and `docker-compose.yml` with Traefik labels.
 - `docs/`: `plan.md`, `decisions/` (ADRs), `assets/` (tool inventory).
 - `.github/workflows/`: CI.
 
@@ -247,7 +247,7 @@ Exit met: Hearthside `v1.0.0` offline release ready across Windows, Linux, Andro
 
 ### Phase 4: Backend foundation on the home server (Active — Run 1)
 
-1. Run 1: Go API skeleton (`cmd/server`, `internal/config`, `internal/db`, `internal/httpapi`), pure-Go SQLite + embedded migrations, `GET /api/v1/healthz`, Workbox `/api` denylist + Vite dev proxy, `Dockerfile.api`, and Docker Compose + Traefik `/api` routing (D25–D26).
+1. Run 1: Single-container Go API skeleton (`cmd/server`, `internal/config`, `internal/db`, `internal/httpapi`), pure-Go SQLite + embedded migrations, `GET /api/v1/healthz`, static PWA + pre-compressed `.gz` serving (`HEARTHSIDE_WEB_DIR=/srv/web`), Workbox `/api` denylist + Vite dev proxy, unified `Dockerfile`, and Docker Compose + Traefik routing (D25–D26).
 2. Run 2: Household accounts, invite CLI/tokens, Email + Password (Argon2id), generic OIDC Discovery + PKCE, session cookies, and child profile management (D9, D27).
 3. Run 3: Server puzzle bank service + scheduled Go engine generation/grading and PWA online bank replenishment.
 4. Run 4: Deterministic Daily Puzzle service (`(YYYY-MM-DD, difficulty, engineVersion)` parity per D28), client sign-in + non-destructive local profile linking UI (D29), and deployment ops runbook.
@@ -477,13 +477,13 @@ Done when: family playtest feedback is incorporated, all CI checks pass, and `v1
 
 Phase 4 adds an optional, private Go API and SQLite store behind Traefik on the Ubuntu home server while keeping the `v1.0.0` offline PWA 100% functional without network access or sign-in.
 
-### 15.1 Run 1: Go API skeleton, SQLite, health check, and Docker/Traefik routing
+### 15.1 Run 1: Go API skeleton, SQLite, health check, static PWA serving, and single-container deploy
 
-1. Implement `services/api/internal/config` (env-backed server, DB, cookie, log-level, and optional generic OIDC configuration), `internal/db` (pure-Go `modernc.org/sqlite`, WAL mode, `foreign_keys=ON`, `busy_timeout=5000`, `MaxOpenConns(1)`, embedded `0001_init.sql` migrations), `internal/httpapi` (request IDs, PII-free `log/slog` JSON access logging, panic recovery, `GET /api/v1/healthz`), and `cmd/server` (`-healthcheck` + graceful shutdown).
-2. Update `apps/web/vite.config.ts` with `workbox.navigateFallbackDenylist: [/^\/api\//]` and `/api` dev proxy (`http://127.0.0.1:8080`).
-3. Add `deploy/Dockerfile.api` and update `deploy/docker-compose.yml` + `deploy/.env.example` with `hearthside-api`, persistent `hearthside_data:/data`, and Traefik `/api` priority routing.
+1. Implement `services/api/internal/config` (env-backed server, DB, `HEARTHSIDE_WEB_DIR`, cookie, log-level, and optional generic OIDC configuration), `internal/db` (pure-Go `modernc.org/sqlite`, WAL mode, `foreign_keys=ON`, `busy_timeout=5000`, `MaxOpenConns(1)`, embedded `0001_init.sql` migrations), `internal/httpapi` (request IDs, PII-free `log/slog` JSON access logging, panic recovery, `GET /api/v1/healthz`, strict `/api/` JSON `404` boundary, and `os.DirFS` static PWA + pre-compressed `.gz` serving when `HEARTHSIDE_WEB_DIR` is set), and `cmd/server` (`-healthcheck` + graceful shutdown).
+2. Update `apps/web/vite.config.ts` with `workbox.navigateFallbackDenylist: [/^\/api\//]` and `/api` dev proxy (`http://127.0.0.1:8080`) for API-only local development.
+3. Consolidate `deploy/Dockerfile`, `deploy/docker-compose.yml`, and `deploy/.env.example` into a single `hearthside` service serving `/srv/web` + `/api/*` on port `8080` with persistent `hearthside_data:/data` and single-router Traefik labels.
 
-Done when: `GET /api/v1/healthz` verifies DB ping + `engine/sudoku` version, Workbox `dist/sw.js` excludes `/api/`, and all Go (`-race`, `golangci-lint`, WASM build) and Web checks pass.
+Done when: `GET /api/v1/healthz` verifies DB ping + `engine/sudoku` version, Go serves pre-compressed PWA assets + SPA fallback safely from `HEARTHSIDE_WEB_DIR`, Workbox `dist/sw.js` excludes `/api/`, and all Go (`-race`, `golangci-lint`, WASM build) and Web checks pass.
 
 ### 15.2 Run 2: Household accounts, invites, Email + Argon2id, and generic OIDC
 
@@ -510,7 +510,7 @@ Done when: online and offline devices play identical Daily Puzzles, local profil
 
 ### 15.5 Phase 4 exit checklist
 
-- [x] Run 1: Go API skeleton (`cmd/server`, `config`, `db`, `httpapi`), `GET /api/v1/healthz`, Workbox `/api` denylist, `Dockerfile.api`, and Compose/Traefik routing verified.
+- [x] Run 1: Single-container Go API skeleton (`cmd/server`, `config`, `db`, `httpapi`), `GET /api/v1/healthz`, `HEARTHSIDE_WEB_DIR=/srv/web` static PWA + `.gz` serving, Workbox `/api` denylist, unified `Dockerfile`, and Compose/Traefik routing verified.
 - [x] Run 2: Invite-only Email + Argon2id, generic OIDC Discovery + PKCE, session cookies, and household child profiles implemented and tested.
 - [ ] Run 3: Scheduled SQLite puzzle bank generation and online PWA bank top-up implemented and tested.
 - [ ] Run 4: Daily puzzle endpoint (D28 parity), non-destructive local profile linking UI (D29), and SQLite backup/restore runbook verified.

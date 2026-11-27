@@ -21,5 +21,5 @@ description: "Apply when creating, modifying, or testing backend HTTP handlers, 
 - Authenticate adult accounts invite-only via Email + Password (Argon2id) or generic OpenID Connect Discovery + PKCE; never require email or passwords for child profiles.
 
 ## Deployment & Verification
-- Build minimal `CGO_ENABLED=0` static binaries (e.g., `deploy/Dockerfile.api` into `gcr.io/distroless/static-debian12:nonroot`) with a `/data` volume and `-healthcheck` probe.
+- Package Hearthside in a single multi-stage `deploy/Dockerfile` (`gcr.io/distroless/static-debian12:nonroot`) running `/server` with `/srv/web` (`HEARTHSIDE_WEB_DIR`), pre-compressed `.gz` assets, a `/data` volume, and `-healthcheck` probe; keep `HEARTHSIDE_WEB_DIR` unset (`""`) in local Vite dev so API-only mode uses the Vite `/api` proxy cleanly.
 - Run `go vet ./engine/sudoku/... ./services/api/...`, `go test -race ./engine/sudoku/... ./services/api/...`, and `golangci-lint run --config ../../.golangci.yml` inside `services/api` before completing changes.
