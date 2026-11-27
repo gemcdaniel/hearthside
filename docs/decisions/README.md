@@ -26,7 +26,7 @@ Decision log for Hearthside, derived from [docs/plan.md](../plan.md).
 
 ## Phase 0 Spike Reports
 
-| Spike   | Title                                 | Status                       | Date       | Report                                         |
-| ------- | ------------------------------------- | ---------------------------- | ---------- | ---------------------------------------------- |
-| Spike A | Go Sudoku engine in WebAssembly       | Confirmed (Standard Go WASM) | 2026-11-26 | [wasm-spike.md](./wasm-spike.md)               |
-| Spike B | PWA install, offline & storage matrix | Pending on-device testing    | 2026-11-26 | [pwa-device-matrix.md](./pwa-device-matrix.md) |
+| Spike   | Title                                 | Status                               | Date       | Report                                         |
+| ------- | ------------------------------------- | ------------------------------------ | ---------- | ---------------------------------------------- |
+| Spike A | Go Sudoku engine in WebAssembly       | Confirmed (Standard Go WASM)         | 2026-11-26 | [wasm-spike.md](./wasm-spike.md)               |
+| Spike B | PWA install, offline & storage matrix | Passed (Tab S10 FE pending hardware) | 2026-11-26 | [pwa-device-matrix.md](./pwa-device-matrix.md) |

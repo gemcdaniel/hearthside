@@ -8,9 +8,9 @@ import {
   moveSelection,
 } from '../grid/gridMath';
 
-const ROW_INDICES = Array.from({ length: GRID_SIZE }, (_, row) => row);
-const COL_INDICES = Array.from({ length: GRID_SIZE }, (_, col) => col);
-const INNER_LINES = Array.from({ length: GRID_SIZE - 1 }, (_, i) => i + 1);
+const CELL_INDICES = Array.from({ length: CELL_COUNT }, (_, i) => i);
+const THIN_LINE_POSITIONS = [100, 200, 400, 500, 700, 800] as const;
+const BOX_LINE_POSITIONS = [300, 600] as const;
 
 export function PlaceholderGrid() {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -59,7 +59,7 @@ export function PlaceholderGrid() {
         <p className="hs-board-status" aria-live="polite">
           {selectedCoords
             ? `Selected: Row ${selectedCoords.row + 1}, Column ${selectedCoords.col + 1} (Box ${selectedCoords.box + 1})`
-            : 'Select any cell using touch, mouse, or arrow keys.'}
+            : 'Select any cell using touch, mouse, stylus, or arrow keys.'}
         </p>
         {selectedIndex !== null ? (
           <button
@@ -73,61 +73,105 @@ export function PlaceholderGrid() {
       </div>
 
       <div className="hs-board-frame">
-        <div className="hs-grid" role="grid" aria-label="9 by 9 Sudoku placeholder grid">
-          {ROW_INDICES.map((row) => (
-            <div key={row} className="hs-grid-row" role="row">
-              {COL_INDICES.map((col) => {
-                const index = getCellIndex(row, col);
-                const highlight = getHighlightKind(selectedIndex, index);
-                const isSelected = highlight === 'selected';
+        <div className="hs-board-stage">
+          <div
+            className="hs-grid"
+            role="grid"
+            aria-label="9 by 9 Sudoku placeholder grid"
+            aria-rowcount={GRID_SIZE}
+            aria-colcount={GRID_SIZE}
+          >
+            {CELL_INDICES.map((index) => {
+              const { row, col } = getCellCoords(index);
+              const cellId = getCellIndex(row, col);
+              const highlight = getHighlightKind(selectedIndex, cellId);
+              const isSelected = highlight === 'selected';
 
-                return (
-                  <button
-                    key={index}
-                    ref={(el) => {
-                      cellRefs.current[index] = el;
-                    }}
-                    type="button"
-                    role="gridcell"
-                    className="hs-cell"
-                    data-highlight={highlight}
-                    data-row={row}
-                    data-col={col}
-                    aria-selected={isSelected}
-                    aria-label={`Row ${row + 1}, Column ${col + 1}${isSelected ? ', selected' : ''}`}
-                    tabIndex={index === activeTabIndex ? 0 : -1}
-                    onClick={() => setSelectedIndex(index)}
-                    onKeyDown={(event) => handleKeyDown(event, index)}
-                  >
-                    {isSelected ? (
-                      <span className="hs-cell-selected-marker" aria-hidden="true" />
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
+              return (
+                <button
+                  key={cellId}
+                  ref={(el) => {
+                    cellRefs.current[cellId] = el;
+                  }}
+                  type="button"
+                  role="gridcell"
+                  className="hs-cell"
+                  data-highlight={highlight}
+                  data-row={row}
+                  data-col={col}
+                  aria-rowindex={row + 1}
+                  aria-colindex={col + 1}
+                  aria-selected={isSelected}
+                  aria-label={`Row ${row + 1}, Column ${col + 1}${isSelected ? ', selected' : ''}`}
+                  tabIndex={cellId === activeTabIndex ? 0 : -1}
+                  onClick={() => setSelectedIndex(cellId)}
+                  onKeyDown={(event) => handleKeyDown(event, cellId)}
+                >
+                  {isSelected ? (
+                    <span className="hs-cell-selected-marker" aria-hidden="true" />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+
+          <svg
+            className="hs-grid-lines"
+            data-testid="grid-lines-svg"
+            viewBox="0 0 900 900"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <g data-line-group="cell">
+              {THIN_LINE_POSITIONS.map((pos) => (
+                <line
+                  key={`v-cell-${pos}`}
+                  x1={pos}
+                  y1={0}
+                  x2={pos}
+                  y2={900}
+                  className="hs-line-cell"
+                  data-line-kind="cell"
+                />
+              ))}
+              {THIN_LINE_POSITIONS.map((pos) => (
+                <line
+                  key={`h-cell-${pos}`}
+                  x1={0}
+                  y1={pos}
+                  x2={900}
+                  y2={pos}
+                  className="hs-line-cell"
+                  data-line-kind="cell"
+                />
+              ))}
+            </g>
+            <g data-line-group="box">
+              {BOX_LINE_POSITIONS.map((pos) => (
+                <line
+                  key={`v-box-${pos}`}
+                  x1={pos}
+                  y1={0}
+                  x2={pos}
+                  y2={900}
+                  className="hs-line-box"
+                  data-line-kind="box"
+                />
+              ))}
+              {BOX_LINE_POSITIONS.map((pos) => (
+                <line
+                  key={`h-box-${pos}`}
+                  x1={0}
+                  y1={pos}
+                  x2={900}
+                  y2={pos}
+                  className="hs-line-box"
+                  data-line-kind="box"
+                />
+              ))}
+            </g>
+          </svg>
         </div>
-
-        <svg
-          className="hs-grid-lines"
-          viewBox="0 0 900 900"
-          preserveAspectRatio="none"
-          aria-hidden="true"
-        >
-          {INNER_LINES.map((n) => {
-            const pos = n * 100;
-            const isBoxBoundary = n % 3 === 0;
-            const className = isBoxBoundary ? 'hs-line-box' : 'hs-line-cell';
-            return (
-              <g key={n}>
-                <line x1={pos} y1={0} x2={pos} y2={900} className={className} />
-                <line x1={0} y1={pos} x2={900} y2={pos} className={className} />
-              </g>
-            );
-          })}
-          <rect x={1} y={1} width={898} height={898} fill="none" className="hs-line-outer" />
-        </svg>
       </div>
     </section>
   );

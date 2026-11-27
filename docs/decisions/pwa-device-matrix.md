@@ -1,13 +1,13 @@
 # Phase 0 Spike B: PWA Device & Browser Matrix
 
-- **Status:** Pending on-device testing
+- **Status:** Passed (tested family devices; Galaxy Tab S10 FE pending hardware)
 - **Date:** 2026-11-26
 - **Related:** [D5: Devices](./0005-devices.md), [D15: Machines and OS mapping](./0015-machines-and-os-mapping.md), [docs/plan.md](../plan.md) Section 11.4
 
 ## Test Origin & Legend
 
 - **Origin:** `https://hearthside.example.com` (internal HTTPS behind Traefik)
-- **Result values:** `Pass` | `Partial` | `Fail` | `Pending`
+- **Result values:** `Pass` | `Partial` | `Fail` | `Pending hardware`
 - **Fallback options:** `None` | `Alternate browser` | `Phase 8 Android wrapper APK` | `Browser tab`
 
 ### Checks per Device
@@ -22,12 +22,17 @@
 
 ## Device Matrix
 
-| Device                         | OS          | Browsers                 | 1. Install | 2. Offline | 3. Update | 4. IndexedDB + Persist | 5. Audio | 6. Input | 7. Sharpness | Overall | Fallback Decision | Notes                               |
-| ------------------------------ | ----------- | ------------------------ | ---------- | ---------- | --------- | ---------------------- | -------- | -------- | ------------ | ------- | ----------------- | ----------------------------------- |
-| Desktop + Odyssey Neo G7 (32") | Windows 11  | Chrome, Edge, Firefox    | Pending    | Pending    | Pending   | Pending                | Pending  | Pending  | Pending      | Pending | None              | Check 4K/DPI scaling sharpness      |
-| Alienware 16 laptop            | Windows 11  | Chrome, Edge, Firefox    | Pending    | Pending    | Pending   | Pending                | Pending  | Pending  | Pending      | Pending | None              |                                     |
-| Dell XPS 15 laptop             | Windows 10  | Chrome, Edge, Firefox    | Pending    | Pending    | Pending   | Pending                | Pending  | Pending  | Pending      | Pending | None              |                                     |
-| Samsung Galaxy Tab S9          | Android     | Chrome, Samsung Internet | Pending    | Pending    | Pending   | Pending                | Pending  | Pending  | Pending      | Pending | None              |                                     |
-| Samsung Galaxy Tab S10 FE      | Android     | Chrome, Samsung Internet | Pending    | Pending    | Pending   | Pending                | Pending  | Pending  | Pending      | Pending | None              | Verify S Pen / stylus + touch input |
-| Pixel 6 Pro                    | Android 17+ | Chrome                   | Pending    | Pending    | Pending   | Pending                | Pending  | Pending  | Pending      | Pending | None              |                                     |
-| Pixel 9                        | Android 17+ | Chrome                   | Pending    | Pending    | Pending   | Pending                | Pending  | Pending  | Pending      | Pending | None              |                                     |
+| Device                         | OS          | Browsers                 | 1. Install       | 2. Offline       | 3. Update        | 4. IndexedDB + Persist | 5. Audio         | 6. Input         | 7. Sharpness     | Overall          | Fallback Decision | Notes                                                                   |
+| ------------------------------ | ----------- | ------------------------ | ---------------- | ---------------- | ---------------- | ---------------------- | ---------------- | ---------------- | ---------------- | ---------------- | ----------------- | ----------------------------------------------------------------------- |
+| Desktop + Odyssey Neo G7 (32") | Windows 11  | Chrome, Edge, Firefox    | Pass             | Pass             | Pass             | Pass                   | Pass             | Pass             | Pass             | Pass             | None              | Verified 4K/DPI scaling sharpness                                       |
+| Alienware 16 laptop            | Windows 11  | Chrome, Edge, Firefox    | Pass             | Pass             | Pass             | Pass                   | Pass             | Pass             | Pass             | Pass             | None              |                                                                         |
+| Dell XPS 15 laptop             | Windows 10  | Chrome, Edge, Firefox    | Pass             | Pass             | Pass             | Pass                   | Pass             | Pass             | Pass             | Pass             | None              |                                                                         |
+| Samsung Galaxy Tab S9          | Android     | Chrome, Samsung Internet | Pass             | Pass             | Pass             | Pass                   | Pass             | Pass             | Pass             | Pass             | None              |                                                                         |
+| Samsung Galaxy Tab S10 FE      | Android     | Chrome, Samsung Internet | Pending hardware | Pending hardware | Pending hardware | Pending hardware       | Pending hardware | Pending hardware | Pending hardware | Pending hardware | None              | Unboxed unit not yet tested; verify S Pen / stylus + touch once unboxed |
+| Pixel 6 Pro                    | Android 17+ | Chrome                   | Pass             | Pass             | Pass             | Pass                   | Pass             | Pass             | Pass             | Pass             | None              |                                                                         |
+| Pixel 9                        | Android 17+ | Chrome                   | Pass             | Pass             | Pass             | Pass                   | Pass             | Pass             | Pass             | Pass             | None              |                                                                         |
+
+## Verdict
+
+- **Result:** PWA install, offline execution, update prompt, IndexedDB persistence, Web Audio gesture unlock, input handling, and display sharpness passed across all tested Windows 10/11 and Android devices.
+- **Packaging fallback:** No Phase 8 Tauri or Capacitor wrapper is needed; the installable PWA satisfies the family device matrix.
