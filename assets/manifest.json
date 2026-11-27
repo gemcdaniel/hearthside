@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "description": "Asset provenance and license manifest for Hearthside (Decision D6). No image, font, or audio asset may enter assets/ without a manifest entry.",
+  "assets": [
+    {
+      "path": "apps/web/public/icons/icon.svg",
+      "source": "Original project placeholder vector icon",
+      "license": "Proprietary (internal household project)",
+      "attribution": "Hearthside project",
+      "tool": "Hand-authored SVG",
+      "termsUrl": "https://github.com/gemcdaniel/hearthside"
+    },
+    {
+      "path": "apps/web/public/icons/pwa-192x192.png",
+      "source": "Generated placeholder PWA icon (192x192)",
+      "license": "Proprietary (internal household project)",
+      "attribution": "Hearthside project",
+      "tool": "Python stdlib PNG generator",
+      "termsUrl": "https://github.com/gemcdaniel/hearthside"
+    },
+    {
+      "path": "apps/web/public/icons/pwa-512x512.png",
+      "source": "Generated placeholder PWA icon (512x512)",
+      "license": "Proprietary (internal household project)",
+      "attribution": "Hearthside project",
+      "tool": "Python stdlib PNG generator",
+      "termsUrl": "https://github.com/gemcdaniel/hearthside"
+    },
+    {
+      "path": "apps/web/public/icons/pwa-maskable-512x512.png",
+      "source": "Generated placeholder maskable PWA icon (512x512)",
+      "license": "Proprietary (internal household project)",
+      "attribution": "Hearthside project",
+      "tool": "Python stdlib PNG generator",
+      "termsUrl": "https://github.com/gemcdaniel/hearthside"
+    },
+    {
+      "path": "node_modules/@fontsource-variable/plus-jakarta-sans",
+      "source": "Fontsource Plus Jakarta Sans Variable (self-hosted .woff2)",
+      "license": "OFL-1.1",
+      "attribution": "Tokotype (Plus Jakarta Sans)",
+      "tool": "Fontsource / npm package",
+      "termsUrl": "https://openfontlicense.org/"
+    },
+    {
+      "path": "node_modules/@fontsource-variable/fraunces",
+      "source": "Fontsource Fraunces Variable (self-hosted .woff2)",
+      "license": "OFL-1.1",
+      "attribution": "Undercase Type (Fraunces)",
+      "tool": "Fontsource / npm package",
+      "termsUrl": "https://openfontlicense.org/"
+    }
+  ]
+}

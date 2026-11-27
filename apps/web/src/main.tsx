@@ -1,3 +1,5 @@
+import '@fontsource-variable/fraunces';
+import '@fontsource-variable/plus-jakarta-sans';
 import '@hearthside/ui/tokens.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

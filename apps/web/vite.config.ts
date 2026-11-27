@@ -62,7 +62,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest,wasm,json}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest,wasm,json,woff2}'],
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
         navigateFallback: '/index.html',
         cleanupOutdatedCaches: true,

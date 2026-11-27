@@ -14,11 +14,14 @@ body {
   font-family: var(--hs-font-sans);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  transition:
+    background-color var(--hs-motion-normal) ease,
+    color var(--hs-motion-normal) ease;
 }
 
 .hs-shell {
   width: 100%;
-  max-width: 44rem;
+  max-width: 46rem;
   margin: 0 auto;
   padding: var(--hs-space-4);
   display: flex;
@@ -29,23 +32,31 @@ body {
 .hs-header {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--hs-space-2);
+  gap: var(--hs-space-3);
   border-bottom: 1px solid var(--hs-border);
   padding-bottom: var(--hs-space-3);
 }
 
+.hs-brand {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hs-space-1);
+}
+
 .hs-title {
   margin: 0;
+  font-family: var(--hs-font-heading);
   font-size: clamp(1.5rem, 3vw, 2rem);
   font-weight: 700;
   letter-spacing: -0.02em;
+  line-height: 1.15;
 }
 
 .hs-subtitle {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: var(--hs-text-sm);
   color: var(--hs-text-muted);
 }
 
@@ -69,17 +80,18 @@ body {
 
 .hs-board-status {
   margin: 0;
-  font-size: 0.9375rem;
+  font-size: var(--hs-text-sm);
+  font-variant-numeric: tabular-nums;
   color: var(--hs-text-muted);
 }
 
 .hs-board-frame {
   width: min(100%, 34rem);
   border: 3px solid var(--hs-grid-box-line);
-  border-radius: var(--hs-radius-sm);
+  border-radius: var(--hs-radius-board);
   overflow: hidden;
   background-color: var(--hs-cell-bg);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--hs-shadow-board);
 }
 
 .hs-board-stage {
@@ -110,6 +122,9 @@ body {
   padding: 0;
   border: 0;
   background-color: var(--hs-cell-bg);
+  color: var(--hs-cell-entry-text);
+  font-family: var(--hs-font-digits);
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
   touch-action: manipulation;
   transition: background-color var(--hs-motion-fast) ease;
@@ -181,7 +196,8 @@ body {
 
 .hs-section-title {
   margin: 0;
-  font-size: 1.0625rem;
+  font-family: var(--hs-font-heading);
+  font-size: var(--hs-text-lg);
   font-weight: 600;
 }
 
@@ -210,7 +226,7 @@ body {
 }
 
 .hs-diag-label {
-  font-size: 0.9375rem;
+  font-size: var(--hs-text-sm);
   font-weight: 600;
   display: inline-flex;
   align-items: center;
@@ -220,7 +236,7 @@ body {
 .hs-diag-output {
   margin: 0;
   font-family: var(--hs-font-mono);
-  font-size: 0.8125rem;
+  font-size: var(--hs-text-xs);
   color: var(--hs-text-muted);
   word-break: break-word;
 }
@@ -235,9 +251,9 @@ body {
   min-height: 44px;
   padding: 0 var(--hs-space-3);
   border-radius: var(--hs-radius-sm);
-  border: 1px solid var(--hs-border);
+  border: 1px solid var(--hs-control-border);
   font: inherit;
-  font-size: 0.875rem;
+  font-size: var(--hs-text-sm);
   font-weight: 600;
   cursor: pointer;
   touch-action: manipulation;
@@ -262,9 +278,18 @@ body {
   color: var(--hs-accent-contrast);
 }
 
+.hs-btn-primary:hover:not(:disabled) {
+  background-color: var(--hs-accent-hover);
+  border-color: var(--hs-accent-hover);
+}
+
 .hs-btn-secondary {
-  background-color: var(--hs-surface);
+  background-color: var(--hs-control-bg);
   color: var(--hs-text);
+}
+
+.hs-btn-secondary:hover:not(:disabled) {
+  background-color: var(--hs-control-hover);
 }
 
 .hs-badge {
@@ -272,7 +297,7 @@ body {
   align-items: center;
   padding: 0.125rem 0.5rem;
   border-radius: 999px;
-  font-size: 0.75rem;
+  font-size: var(--hs-text-xs);
   font-weight: 700;
   border: 1px solid currentColor;
 }
@@ -313,11 +338,11 @@ body {
   min-height: 44px;
   padding: 0 var(--hs-space-3);
   border-radius: var(--hs-radius-sm);
-  border: 1px solid var(--hs-border);
-  background-color: var(--hs-surface);
+  border: 1px solid var(--hs-control-border);
+  background-color: var(--hs-control-bg);
   color: var(--hs-text);
   font: inherit;
-  font-size: 0.875rem;
+  font-size: var(--hs-text-sm);
   font-weight: 600;
 }
 
@@ -341,7 +366,7 @@ body {
   background-color: var(--hs-surface);
   color: var(--hs-text);
   font-family: var(--hs-font-mono);
-  font-size: 0.75rem;
+  font-size: var(--hs-text-xs);
   resize: vertical;
 }
 
@@ -356,7 +381,7 @@ body {
   background-color: var(--hs-surface);
   border: 2px solid var(--hs-accent);
   border-radius: var(--hs-radius-md);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  box-shadow: var(--hs-shadow-banner);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -367,6 +392,6 @@ body {
 
 .hs-pwa-banner-text {
   margin: 0;
-  font-size: 0.9375rem;
+  font-size: var(--hs-text-sm);
   font-weight: 500;
 }
