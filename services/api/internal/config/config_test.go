@@ -36,6 +36,9 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.OIDC.Enabled() {
 		t.Fatalf("OIDC.Enabled() = true, want false")
 	}
+	if cfg.BootstrapToken != "" {
+		t.Fatalf("BootstrapToken = %q, want empty", cfg.BootstrapToken)
+	}
 }
 
 func TestLoadCustomAndOIDC(t *testing.T) {
@@ -45,6 +48,7 @@ func TestLoadCustomAndOIDC(t *testing.T) {
 		"HEARTHSIDE_PUBLIC_BASE_URL":    "https://hearthside.example.com/",
 		"HEARTHSIDE_COOKIE_SECURE":      "false",
 		"HEARTHSIDE_LOG_LEVEL":          "debug",
+		"HEARTHSIDE_BOOTSTRAP_TOKEN":    "bootstrap-secret",
 		"HEARTHSIDE_OIDC_ISSUER_URL":    "https://accounts.google.com/",
 		"HEARTHSIDE_OIDC_CLIENT_ID":     "client-123",
 		"HEARTHSIDE_OIDC_PROVIDER_NAME": "Google",
@@ -69,6 +73,9 @@ func TestLoadCustomAndOIDC(t *testing.T) {
 	if cfg.LogLevel != slog.LevelDebug {
 		t.Fatalf("LogLevel = %v, want debug", cfg.LogLevel)
 	}
+	if cfg.BootstrapToken != "bootstrap-secret" {
+		t.Fatalf("BootstrapToken = %q, want bootstrap-secret", cfg.BootstrapToken)
+	}
 	if !cfg.OIDC.Enabled() {
 		t.Fatalf("OIDC.Enabled() = false, want true")
 	}
@@ -77,6 +84,45 @@ func TestLoadCustomAndOIDC(t *testing.T) {
 	}
 	if len(cfg.OIDC.Scopes) != 2 || cfg.OIDC.Scopes[0] != "openid" || cfg.OIDC.Scopes[1] != "email" {
 		t.Fatalf("OIDC.Scopes = %v", cfg.OIDC.Scopes)
+	}
+}
+
+func TestLoadOIDCDisabledWhenIncomplete(t *testing.T) {
+	cases := []struct {
+		name string
+		env  map[string]string
+	}{
+		{
+			name: "only scopes and provider name set",
+			env: map[string]string{
+				"HEARTHSIDE_OIDC_PROVIDER_NAME": "Google",
+				"HEARTHSIDE_OIDC_SCOPES":        "openid profile email",
+			},
+		},
+		{
+			name: "missing client id",
+			env: map[string]string{
+				"HEARTHSIDE_OIDC_ISSUER_URL": "https://idp.example.com",
+			},
+		},
+		{
+			name: "missing issuer url",
+			env: map[string]string{
+				"HEARTHSIDE_OIDC_CLIENT_ID": "abc",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := LoadFromLookup(mapLookup(tc.env))
+			if err != nil {
+				t.Fatalf("expected OIDC to cleanly disable without error, got: %v", err)
+			}
+			if cfg.OIDC.Enabled() {
+				t.Fatalf("OIDC.Enabled() = true, want false")
+			}
+		})
 	}
 }
 
@@ -96,14 +142,6 @@ func TestLoadValidationErrors(t *testing.T) {
 		{
 			name: "invalid log level",
 			env:  map[string]string{"HEARTHSIDE_LOG_LEVEL": "verbose"},
-		},
-		{
-			name: "oidc missing client id",
-			env:  map[string]string{"HEARTHSIDE_OIDC_ISSUER_URL": "https://idp.example.com"},
-		},
-		{
-			name: "oidc missing issuer when client id set",
-			env:  map[string]string{"HEARTHSIDE_OIDC_CLIENT_ID": "abc"},
 		},
 		{
 			name: "oidc invalid issuer url",

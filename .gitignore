@@ -20,3 +20,9 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+
+# Runtime SQLite databases
+data/
+*.db
+*.db-wal
+*.db-shm

@@ -68,7 +68,7 @@ func run(ctx context.Context) error {
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           httpapi.NewHandler(httpapi.Dependencies{DB: database, Logger: logger}),
+		Handler:           httpapi.NewHandler(httpapi.Dependencies{DB: database, Logger: logger, Config: cfg}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,

@@ -47,8 +47,34 @@ func TestOpenPragmasAndMigrateIdempotent(t *testing.T) {
 	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&migrationCount); err != nil {
 		t.Fatalf("count schema_migrations failed: %v", err)
 	}
-	if migrationCount != 1 {
-		t.Fatalf("migrationCount = %d, want 1", migrationCount)
+	if migrationCount != 2 {
+		t.Fatalf("migrationCount = %d, want 2", migrationCount)
+	}
+
+	tables := []string{
+		"app_meta",
+		"households",
+		"users",
+		"user_identities",
+		"profiles",
+		"invites",
+		"sessions",
+		"oidc_auth_flows",
+	}
+	for _, table := range tables {
+		var name string
+		err := database.QueryRowContext(ctx, `SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&name)
+		if err != nil {
+			t.Fatalf("expected table %s to exist: %v", table, err)
+		}
+	}
+
+	// Verify foreign key constraint is active on auth tables.
+	if _, err := database.ExecContext(ctx, `
+		INSERT INTO users (id, household_id, email, display_name, role)
+		VALUES ('u1', 'missing-household', 'parent@example.com', 'Parent', 'owner')
+	`); err == nil {
+		t.Fatalf("expected foreign key violation inserting user with missing household")
 	}
 
 	var phase string

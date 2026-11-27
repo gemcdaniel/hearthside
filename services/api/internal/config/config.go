@@ -2,7 +2,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
@@ -32,17 +31,18 @@ type OIDCConfig struct {
 
 // Enabled reports whether an OIDC provider is configured.
 func (o OIDCConfig) Enabled() bool {
-	return o.IssuerURL != ""
+	return o.IssuerURL != "" && o.ClientID != ""
 }
 
 // Config contains validated runtime settings for the Hearthside API server.
 type Config struct {
-	Addr          string
-	DBPath        string
-	PublicBaseURL string
-	CookieSecure  bool
-	LogLevel      slog.Level
-	OIDC          OIDCConfig
+	Addr           string
+	DBPath         string
+	PublicBaseURL  string
+	CookieSecure   bool
+	LogLevel       slog.Level
+	BootstrapToken string
+	OIDC           OIDCConfig
 }
 
 // LookupFunc resolves environment variable names to values.
@@ -92,6 +92,10 @@ func LoadFromLookup(lookup LookupFunc) (Config, error) {
 		cfg.LogLevel = lvl
 	}
 
+	if v, ok := lookupNonEmpty(lookup, "HEARTHSIDE_BOOTSTRAP_TOKEN"); ok {
+		cfg.BootstrapToken = v
+	}
+
 	oidcCfg, err := loadOIDC(lookup)
 	if err != nil {
 		return Config{}, err
@@ -124,19 +128,13 @@ func loadOIDC(lookup LookupFunc) (OIDCConfig, error) {
 	providerName, _ := lookupNonEmpty(lookup, "HEARTHSIDE_OIDC_PROVIDER_NAME")
 	rawScopes, hasScopes := lookupNonEmpty(lookup, "HEARTHSIDE_OIDC_SCOPES")
 
-	anySet := issuer != "" || clientID != "" || clientSecret != "" || providerName != "" || hasScopes
-	if !anySet {
+	// OIDC is cleanly disabled whenever either issuer URL or client ID is empty.
+	if issuer == "" || clientID == "" {
 		return OIDCConfig{}, nil
 	}
 
-	if issuer == "" {
-		return OIDCConfig{}, errors.New("HEARTHSIDE_OIDC_ISSUER_URL is required when OIDC settings are provided")
-	}
 	if err := validateHTTPURL("HEARTHSIDE_OIDC_ISSUER_URL", issuer); err != nil {
 		return OIDCConfig{}, err
-	}
-	if clientID == "" {
-		return OIDCConfig{}, errors.New("HEARTHSIDE_OIDC_CLIENT_ID is required when HEARTHSIDE_OIDC_ISSUER_URL is set")
 	}
 
 	if providerName == "" {

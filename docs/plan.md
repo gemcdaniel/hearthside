@@ -511,10 +511,10 @@ Done when: online and offline devices play identical Daily Puzzles, local profil
 ### 15.5 Phase 4 exit checklist
 
 - [x] Run 1: Go API skeleton (`cmd/server`, `config`, `db`, `httpapi`), `GET /api/v1/healthz`, Workbox `/api` denylist, `Dockerfile.api`, and Compose/Traefik routing verified.
-- [ ] Run 2: Invite-only Email + Argon2id, generic OIDC Discovery + PKCE, session cookies, and household child profiles implemented and tested.
+- [x] Run 2: Invite-only Email + Argon2id, generic OIDC Discovery + PKCE, session cookies, and household child profiles implemented and tested.
 - [ ] Run 3: Scheduled SQLite puzzle bank generation and online PWA bank top-up implemented and tested.
 - [ ] Run 4: Daily puzzle endpoint (D28 parity), non-destructive local profile linking UI (D29), and SQLite backup/restore runbook verified.
 
 ## 16. Next step
 
-Continue **Phase 4, Run 2** (Household accounts, invite-only Email + Argon2id auth, generic OIDC Discovery + PKCE, session cookies, and child profile management).
+Continue **Phase 4, Run 3** (Server SQLite puzzle bank service, scheduled Go engine replenishment, and online PWA puzzle bank top-up).
