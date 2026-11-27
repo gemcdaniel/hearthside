@@ -7,6 +7,7 @@ description: "Apply when creating, modifying, or testing frontend code, PWA/offl
 
 ## Tooling & TypeScript
 - Use **Bun** for package management (`bun install`, `bun.lock`) and scripts, paired with **Vite** + `vite-plugin-pwa` for bundling. Never replace Vite with `bun build`.
+- Target current evergreen browsers (**Chrome, Edge, Firefox, Samsung Internet**) on **Windows 10/11** and **Android**, keeping Vite on modern build targets (no legacy browser polyfills or downlevel transpilation).
 - Enable TypeScript `strict: true` and `noUncheckedIndexedAccess: true`. Avoid `any`; use `unknown` and narrow explicitly.
 - Keep Vitest (`bun run test`) for unit/component tests and Playwright for E2E tests.
 
@@ -20,7 +21,7 @@ description: "Apply when creating, modifying, or testing frontend code, PWA/offl
 - **Vector-first:** Use SVG and CSS for game boards and UI chrome so lines and text stay crisp at 1x–3x pixel density from phones up to 32" 4K displays. Reserve raster images for illustrations/backgrounds.
 - **Themes:** Define all colors, typography, spacing, corner radii, and motion timings as CSS variables in `packages/ui`. Never hardcode hex colors inside components. Every theme must support light and dark modes.
 - **Kid-friendly & accessible baseline:** Use generous touch targets (minimum 44x44px), simple wording, strong contrast, and `prefers-reduced-motion` support. Never convey state (selection, errors, conflicts, givens) by color alone—pair with borders, icons, or weight.
-- **Input:** Support touch and mouse cleanly across Windows 10/11, Android, and Fire OS. Include keyboard navigation and focus states for accessibility.
+- **Input:** Use standard **Pointer Events** / `click` handlers (never touch-only events such as `touchstart`/`touchend`) so finger touch, mouse, and **S Pen / stylus** input (e.g., on the Samsung Galaxy Tab S10 FE) work seamlessly across Windows 10/11 and Android. Include keyboard navigation and visible focus states for accessibility.
 
 ## Offline PWA & Browser APIs
 - **Offline-first:** All gameplay, bundled fonts, icons, and starter puzzles must work with zero network access after first load. Never load fonts or scripts from external CDNs.

@@ -14,4 +14,4 @@ Serve Hearthside at `https://hearthside.example.com` behind Traefik on the Ubunt
 ## Consequences
 
 - `deploy/` configures Docker Compose and Traefik labels for `hearthside.example.com`.
-- Family Android, Fire OS, and Windows devices can test real PWA installs from Phase 0 Step 2 onward.
+- Family Android and Windows devices can test real PWA installs from Phase 0 Step 2 onward.

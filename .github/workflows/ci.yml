@@ -66,6 +66,9 @@ jobs:
         working-directory: engine/sudoku
         run: GOOS=js GOARCH=wasm go build ./...
 
+      - name: Build WASM artifacts and manifest
+        run: sh scripts/build-wasm.sh
+
       - name: Lint engine/sudoku
         uses: golangci/golangci-lint-action@v9
         with:

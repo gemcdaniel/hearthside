@@ -6,6 +6,7 @@ playwright-report
 test-results
 engine
 services
+apps/web/public/wasm
 AGENTS.md
 .agents
 docs/plan.md

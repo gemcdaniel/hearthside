@@ -23,3 +23,10 @@ Decision log for Hearthside, derived from [docs/plan.md](../plan.md).
 | D17 | UI framework                        | Confirmed                          | 2026-11-26 | [0017-ui-framework.md](./0017-ui-framework.md)                                       |
 | D18 | Web runtime and package manager     | Confirmed / Proposed default       | 2026-11-26 | [0018-web-runtime-and-package-manager.md](./0018-web-runtime-and-package-manager.md) |
 | D19 | Agentic implementation workflow     | Confirmed                          | 2026-11-26 | [0019-agentic-implementation-workflow.md](./0019-agentic-implementation-workflow.md) |
+
+## Phase 0 Spike Reports
+
+| Spike   | Title                                 | Status                       | Date       | Report                                         |
+| ------- | ------------------------------------- | ---------------------------- | ---------- | ---------------------------------------------- |
+| Spike A | Go Sudoku engine in WebAssembly       | Confirmed (Standard Go WASM) | 2026-11-26 | [wasm-spike.md](./wasm-spike.md)               |
+| Spike B | PWA install, offline & storage matrix | Pending on-device testing    | 2026-11-26 | [pwa-device-matrix.md](./pwa-device-matrix.md) |

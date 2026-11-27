@@ -22,7 +22,6 @@ Non-goals (Confirmed): monetization, app-store publishing, user analytics, Apple
   - Desktop (Windows 11) and Alienware 16 laptop (Windows 11), with a 32-inch Samsung Odyssey Neo G7 monitor.
   - Dell XPS 15 laptop (Windows 10).
   - Home server (Ubuntu).
-  - Amazon Fire HD 10 Plus (10.1-inch, 2021, Fire OS).
   - Samsung Galaxy Tab S9 and Tab S10 FE (Android).
   - Pixel 6 Pro and Pixel 9 (Android 17+).
 
@@ -71,7 +70,7 @@ D1 to D19 are confirmed unless noted as Proposed.
 
 **D4. Hosting (confirmed).** Personal Ubuntu home server (also running Plex, Immich and other self-hosted services). A single Go binary with SQLite fits; access and deployment are settled in D10 and D16.
 
-**D5. Devices (confirmed).** Family devices are listed in section 2.1, and Phase 0 tests the PWA on each. The Fire HD 10 Plus runs Fire OS, so its browser's PWA install and offline behavior must be checked on the device; a Chromium-based browser or an Android wrapper are the fallbacks.
+**D5. Devices (confirmed).** Family devices are listed in section 2.1, and Phase 0 tests the PWA on each across current evergreen browsers (Chrome, Edge, Firefox, Samsung Internet). Amazon Fire HD 10 Plus / Fire OS (Silk) has been retired from the support floor; thin desktop or Android wrappers remain optional fallbacks only if a supported device falls short.
 
 **D6. Asset tools (confirmed).** Whatever Google AI Pro provides, plus free Ubuntu tools. Phase 0 inventories included image, music and sound tools and their output terms. Every asset goes in the license manifest (source, license, attribution, generating tool and its terms).
 
@@ -94,7 +93,7 @@ D1 to D19 are confirmed unless noted as Proposed.
 
 **D14. Playing together (confirmed).** All three: (a) a shared household view, with leaderboards and daily-puzzle results for every family member; (b) same-device play with quick profile switching; (c) live co-op or head-to-head play on one puzzle across two devices. Placement: local profiles for (b) in Phase 2, (a) in Phases 4 to 6, and (c) in Phase 9, because it needs real-time sync and an authoritative server. Co-op and head-to-head rules are specified before Phase 9.
 
-**D15. Machines and OS mapping (confirmed).** Development runs on Windows 11 with WSL2 (Ubuntu). OS mapping across family hardware: Dell XPS 15 (Windows 10), Alienware 16 laptop and desktop (Windows 11), home server (Ubuntu), plus the Android and Fire OS devices in section 2.1.
+**D15. Machines and OS mapping (confirmed).** Development runs on Windows 11 with WSL2 (Ubuntu). OS mapping across family hardware: Dell XPS 15 (Windows 10), Alienware 16 laptop and desktop (Windows 11), home server (Ubuntu), plus the Android devices in section 2.1.
 
 **D16. Test hostname and reverse proxy (confirmed).** `hearthside.example.com` behind Traefik over HTTPS. Reachable on the internal network only during Phase 0, and opened to the internet when ready.
 
@@ -108,7 +107,7 @@ D1 to D19 are confirmed unless noted as Proposed.
 
 ### 4.1 Client: PWA first
 
-One TypeScript codebase delivers Windows, Linux, Android phone/tablet and browser through an installable PWA. It works offline through a service worker and IndexedDB, needs no app store, and scales to any resolution because the UI is vector-based. Browser support for installing PWAs varies, so it is verified at kickoff on all actual devices. If the PWA falls short on any device (for example the Fire tablet), thin wrappers such as Tauri (desktop) or Capacitor (Android) can reuse the same code later.
+One TypeScript codebase delivers Windows, Linux, Android phone/tablet and browser through an installable PWA. It works offline through a service worker and IndexedDB, needs no app store, and scales to any resolution because the UI is vector-based. Browser support for installing PWAs varies, so it is verified at kickoff on all actual devices. If the PWA falls short on any supported device, thin wrappers such as Tauri (desktop) or Capacitor (Android) can reuse the same code later.
 
 - Package manager / runtime: Bun (v1.4.5+) (D18).
 - Language and build: TypeScript (strict), Vite.
@@ -200,7 +199,7 @@ Touch and mouse: tap or click a cell, then a number pad; a notes-mode toggle; er
 
 1. Settle remaining Phase 0 details: launch theme count/visual direction and section 6.4 feature details.
 2. Create the private GitHub repository `hearthside` (D13), monorepo layout, Bun + TypeScript strict + Vite + ESLint/Prettier + Vitest + Playwright, Go workspace (`go.work`) + `golangci-lint`, GitHub Actions CI, and Antigravity `AGENTS.md` / `.agents/rules/*.md`.
-3. Spike A (Go engine to WASM: size, speed) and Spike B (PWA install and offline test on every family device, including Fire HD 10 Plus and Dell XPS 15).
+3. Spike A (Go engine to WASM: size, speed — locked to Standard Go WASM) and Spike B (PWA install and offline test on every family device, including Dell XPS 15 and Galaxy Tab S10 FE).
 4. Choose visual direction, build initial design tokens, and inventory Google AI Pro image/music/sound tools and output terms.
 
 Exit: decisions locked, spikes passed or fallback chosen, CI green. Section 11 details each step.
@@ -271,7 +270,7 @@ Exit: 2.0 release with accounts, sync, daily puzzles and leaderboards.
 
 ### Phase 8: Packaging (only if needed)
 
-Desktop installers (Tauri) and an Android package (Capacitor) as thin wrappers over the same code, only if the PWA falls short on a family device such as the Fire tablet.
+Desktop installers (Tauri) and an Android package (Capacitor) as thin wrappers over the same code, only if the PWA falls short on a supported family device.
 
 ### Phase 9: Real-time Sudoku play
 
@@ -301,7 +300,6 @@ Exit: second game ships without changes to the shell beyond the plugin interface
 - Bun runtime compatibility (D18): Phase 0 confirms Vite + `vite-plugin-pwa` + Vitest + Playwright run cleanly under Bun; Node 26 LTS + pnpm is the fallback.
 - Children plus online features: private invite-only server; child profiles sit under a parent account (D9) with no child email/login collected.
 - Internet exposure of home server: internal-only until Phase 7 hardening (HTTPS, rate limiting, patching, backups).
-- Fire HD 10 Plus (2021): Silk browser PWA/offline/audio limits tested in Phase 0.
 - Free/AI asset quality and licenses: enforced by the license manifest (D6).
 - PWA limits: install flow varies by browser; audio requires user gesture; browser storage can be evicted (mitigated by persistent storage + save export).
 
@@ -350,7 +348,7 @@ Goal: verify whether the hybrid approach (D2) meets performance budgets on the s
 1. In `engine/sudoku`, implement a minimal engine: 9-bit candidate mask per cell, naked-single and hidden-single steps, backtracking solver with solution counter, and a "next logical step" hint function.
 2. Build for WASM two ways: standard Go (`GOOS=js GOARCH=wasm`) and TinyGo (if compatible). Execute in a Web Worker so the UI thread never blocks.
 3. Measure across the section 11.4 device matrix: raw and compressed WASM size, cold start time, and hint compute time on a hard puzzle.
-4. Starting budgets (refine after measurement): compressed size <= 2 MB; startup < 1 s and hint < 200 ms on Fire HD 10 Plus, faster elsewhere.
+4. Starting budgets (refine after measurement): compressed size <= 2 MB; startup < 1 s and hint < 200 ms across supported family devices.
 5. Only if a budget fails, implement the equivalent hint step in TypeScript and benchmark it.
 6. Record verdict (`standard Go`, `TinyGo`, or `TypeScript fallback`) in `docs/decisions/wasm-spike.md`.
 
@@ -369,7 +367,6 @@ Goal: verify install, offline, storage, audio, input, and visual sharpness acros
 | Samsung Galaxy Tab S10 FE | Android | Chrome, Samsung Internet |
 | Pixel 6 Pro | Android 17+ | Chrome |
 | Pixel 9 | Android 17+ | Chrome |
-| Fire HD 10 Plus (2021) | Fire OS | Silk, plus a Chromium-based browser if installable |
 
 Checks per device:
 - Installs as an app and launches standalone/full-screen.

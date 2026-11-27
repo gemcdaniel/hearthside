@@ -21,7 +21,7 @@ description: "Apply when working on Go modules (engine/sudoku, services/api), go
 ## WebAssembly & Worker Contract
 - Execute the compiled WASM engine inside a **Web Worker** so the browser UI thread never freezes.
 - Keep the JS/WASM bridge minimal and coarse-grained (pass serialized board/request payloads rather than chatty per-cell calls).
-- Phase 0 performance budgets (measure on Fire HD 10 Plus as the floor): compressed WASM <= 2 MB, cold start < 1 s, hint calculation < 200 ms.
+- Phase 0 performance budgets (across supported Windows 10/11 and Android devices): compressed WASM <= 2 MB, cold start < 1 s, hint calculation < 200 ms. (Spike A locked Standard Go WASM.)
 
 ## Backend & Deployment Constraints (Phase 4+)
 - Private, invite-only family service running in Docker Compose behind Traefik over HTTPS (`hearthside.example.com`), internal-only until Phase 7 hardening.

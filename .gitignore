@@ -12,6 +12,7 @@ test-results/
 *.exe
 *.test
 *.out
+apps/web/public/wasm/
 
 # OS, editors & local env
 .DS_Store

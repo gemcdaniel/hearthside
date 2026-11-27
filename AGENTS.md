@@ -5,7 +5,7 @@ Read `docs/plan.md` for the full architecture, decisions (D1–D19), and current
 ## Hard Constraints (Never Violate)
 - **Offline-first:** Core gameplay must never require network access or sign-in.
 - **No analytics / kid-safe baseline:** Zero telemetry, third-party trackers, ads, external links, or free-text sharing. Children are primary users.
-- **No Apple-specific targets:** Scope is Windows 10/11, Linux (Ubuntu), Android, Fire OS, and browser/PWA.
+- **No Apple-specific targets:** Scope is Windows 10/11, Linux (Ubuntu), Android, and browser/PWA.
 - **Asset provenance:** Never add an image, font, or audio file to `assets/` without recording its source, license, and tool terms in the asset manifest.
 - **Display name:** Keep the app display name ("Hearthside") centralized in a single config constant.
 

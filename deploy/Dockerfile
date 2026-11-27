@@ -1,3 +1,12 @@
+FROM golang:1.27.4-alpine AS wasm-builder
+
+WORKDIR /app
+
+COPY engine/sudoku ./engine/sudoku
+COPY scripts/build-wasm.sh ./scripts/build-wasm.sh
+
+RUN sh ./scripts/build-wasm.sh
+
 FROM oven/bun:1.4.5-alpine AS builder
 
 WORKDIR /app
@@ -13,6 +22,7 @@ RUN bun install --frozen-lockfile
 COPY packages ./packages
 COPY games ./games
 COPY apps/web ./apps/web
+COPY --from=wasm-builder /app/apps/web/public/wasm ./apps/web/public/wasm
 
 RUN bun run build
 

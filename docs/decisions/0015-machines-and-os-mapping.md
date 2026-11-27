@@ -15,7 +15,6 @@ Development runs on Windows 11 with WSL2 (Ubuntu), keeping the repository inside
 - Alienware 16 laptop (Windows 11)
 - Dell XPS 15 laptop (Windows 10)
 - Home server (Ubuntu)
-- Amazon Fire HD 10 Plus, 2021 (Fire OS)
 - Samsung Galaxy Tab S9 & Tab S10 FE (Android)
 - Pixel 6 Pro & Pixel 9 (Android 17+)
 

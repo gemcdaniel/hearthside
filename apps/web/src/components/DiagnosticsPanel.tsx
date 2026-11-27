@@ -10,6 +10,7 @@ import {
   type StoragePersistenceStatus,
 } from '../diagnostics/indexedDb';
 import { playSmokeChime } from '../diagnostics/webAudio';
+import { WasmBenchmarkCard } from './WasmBenchmarkCard';
 
 function formatPersistenceLabel(status: StoragePersistenceStatus | 'checking'): string {
   switch (status) {
@@ -231,6 +232,8 @@ export function DiagnosticsPanel() {
             {audioStatus}
           </p>
         </div>
+
+        <WasmBenchmarkCard />
       </div>
     </section>
   );
