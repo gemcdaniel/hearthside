@@ -54,8 +54,9 @@ function createInitialFallbackSettings(): ProfileSettings {
 function syncAudioFromSettings(settings: ProfileSettings) {
   audioService.setSfxEnabled(settings.sfxEnabled);
   audioService.setSfxVolume(settings.sfxVolume);
-  audioService.setMusicEnabled(settings.musicEnabled);
+  audioService.playMusicTrack(settings.theme);
   audioService.setMusicVolume(settings.musicVolume);
+  audioService.setMusicEnabled(settings.musicEnabled);
 }
 
 export function App() {

@@ -238,11 +238,12 @@ describe('SudokuGame UI', () => {
     const cell0 = cells[0]!; // solution[0] = 7; row 0 has 8 at cell 5
     const cell5 = cells[5]!;
 
-    // Place 8 into cell 0 -> duplicate conflict with cell 5
+    // Place 8 into cell 0 -> duplicate conflict with cell 5 + nudge micro-interaction
     fireEvent.pointerDown(cell0);
     fireEvent.click(screen.getByRole('button', { name: /Enter 8,/ }));
     expect(cell0).toHaveAttribute('data-conflict', 'true');
     expect(cell5).toHaveAttribute('data-conflict', 'true');
+    expect(cell0).toHaveAttribute('data-nudge', 'true');
     expect(audio.playSfx).toHaveBeenCalledWith('conflict');
 
     // Replace with 1 (no peer duplicate, but disagrees with solution=7).
@@ -262,6 +263,65 @@ describe('SudokuGame UI', () => {
     fireEvent.click(screen.getByRole('button', { name: /Enter 7,/ }));
     expect(cell0).toHaveAttribute('data-wrong', 'false');
     expect(audio.playSfx).toHaveBeenCalledWith('place');
+  });
+
+  it('plays unitComplete + sweeps row without leaking solution, skips sweep on undo, and plays win on final cell', async () => {
+    const storage = createMemoryStorage();
+    // Row 0 is missing only cell 0 (=7); rest of board also has empty cells so completing row 0 is not final win.
+    const rowNearlyDone: PuzzleRecord = {
+      id: 'unit-sweep-test',
+      seed: 12345,
+      engineVersion: '0.1.0-dev',
+      difficulty: 'easy',
+      techniquesRequired: ['naked_single'],
+      clues: '023968154549371682186254379432716598615489237978532416257843961391627845064195723',
+      solution: '723968154549371682186254379432716598615489237978532416257843961391627845864195723',
+    };
+    const audio = createMockAudio();
+    const wasmClient = createMockWasmClient({
+      generatePuzzle: vi.fn(async () => rowNearlyDone),
+    });
+    // Use empty completed set but provide puzzle via daily mode so rowNearlyDone loads directly
+    const services = createTestServices({ storage, audio });
+    render(
+      <SudokuGame
+        services={services}
+        initialMode="daily:2026-11-27:easy"
+        wasmClient={wasmClient}
+      />,
+    );
+
+    const grid = await screen.findByRole('grid', { name: '9 by 9 Sudoku board' });
+    const cells = within(grid).getAllByRole('gridcell');
+    const cell0 = cells[0]!;
+    const cell1 = cells[1]!;
+
+    // Complete row 0 (not final win since cell 72 is empty) -> unitComplete SFX + sweep on row 0
+    fireEvent.pointerDown(cell0);
+    fireEvent.click(screen.getByRole('button', { name: /Enter 7,/ }));
+    expect(audio.playSfx).toHaveBeenCalledWith('unitComplete');
+    expect(cell0).toHaveAttribute('data-unit-complete', 'true');
+    expect(cell1).toHaveAttribute('data-unit-complete', 'true');
+    expect(cell0.querySelector('.hs-sudoku-digit')).toHaveAttribute('data-pop', 'true');
+
+    // Undo clears sweep & plays tap (never unitComplete)
+    audio.playSfx.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(audio.playSfx).toHaveBeenCalledWith('tap');
+    expect(audio.playSfx).not.toHaveBeenCalledWith('unitComplete');
+    expect(cell0).toHaveAttribute('data-unit-complete', 'false');
+
+    // Finish both remaining cells -> final cell triggers 'win' + victory ripple (not unitComplete)
+    fireEvent.pointerDown(cell0);
+    fireEvent.click(screen.getByRole('button', { name: /Enter 7,/ }));
+    audio.playSfx.mockClear();
+
+    const cell72 = within(grid).getAllByRole('gridcell')[72]!;
+    fireEvent.pointerDown(cell72);
+    fireEvent.click(screen.getByRole('button', { name: /Enter 8,/ }));
+    expect(audio.playSfx).toHaveBeenCalledWith('win');
+    expect(audio.playSfx).not.toHaveBeenCalledWith('unitComplete');
+    expect(grid).toHaveAttribute('data-victory-ripple', 'true');
   });
 
   it('conceals board digits and notes under the Pause curtain and auto-pauses on visibilitychange', async () => {

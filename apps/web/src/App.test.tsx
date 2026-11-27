@@ -132,7 +132,7 @@ describe('Hearthside AIO Shell', () => {
     ).not.toBeChecked();
   });
 
-  it('keeps SFX active while marking Background music as disabled for Phase 3', async () => {
+  it('enables Background music toggle & volume slider in Settings and persists per profile', async () => {
     render(<App />);
     await screen.findByText('Welcome, Player 1');
 
@@ -141,8 +141,28 @@ describe('Hearthside AIO Shell', () => {
 
     expect(within(dialog).getByLabelText('Sound effects (SFX)')).toBeEnabled();
     expect(within(dialog).getByLabelText(/SFX volume/)).toBeEnabled();
-    expect(within(dialog).getByLabelText('Background music')).toBeDisabled();
-    expect(within(dialog).getByLabelText(/Music volume/)).toBeDisabled();
-    expect(within(dialog).getByText('Coming in Phase 3')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Coming in Phase 3')).not.toBeInTheDocument();
+
+    const musicToggle = within(dialog).getByLabelText('Background music');
+    const musicSlider = within(dialog).getByLabelText(/Music volume/);
+    expect(musicToggle).toBeEnabled();
+    expect(musicToggle).not.toBeChecked();
+    expect(musicSlider).toBeEnabled();
+
+    fireEvent.click(musicToggle);
+    fireEvent.change(musicSlider, { target: { value: '65' } });
+
+    expect(musicToggle).toBeChecked();
+    await waitFor(() => {
+      expect(audioService.getSnapshot().musicEnabled).toBe(true);
+      expect(audioService.getSnapshot().musicVolume).toBeCloseTo(0.65, 2);
+      expect(audioService.getSnapshot().activeMusicTrack).toBe('clean-minimal');
+    });
+
+    // Switching theme updates the active ambient soundscape track cleanly
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Warm Hearthside' }));
+    await waitFor(() => {
+      expect(audioService.getSnapshot().activeMusicTrack).toBe('warm-hearthside');
+    });
   });
 });

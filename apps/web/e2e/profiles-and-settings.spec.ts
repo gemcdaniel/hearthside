@@ -22,9 +22,13 @@ test.describe('Local Profiles & Isolated Settings', () => {
     await wrongToggle.check();
     await expect(wrongToggle).toBeChecked();
 
-    // Background Music remains marked Coming in Phase 3
-    await expect(dialog.getByLabel('Background music')).toBeDisabled();
-    await expect(dialog.getByText('Coming in Phase 3')).toBeVisible();
+    // Background Music & volume controls are enabled and isolated per profile
+    const musicToggle = dialog.getByLabel('Background music');
+    await expect(musicToggle).toBeEnabled();
+    await expect(dialog.getByLabel(/Music volume/)).toBeEnabled();
+    await expect(dialog.getByText('Coming in Phase 3')).toBeHidden();
+    await musicToggle.check();
+    await expect(musicToggle).toBeChecked();
 
     await dialog.getByRole('button', { name: 'Close Settings' }).click();
 
@@ -42,5 +46,6 @@ test.describe('Local Profiles & Isolated Settings', () => {
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'clean-minimal');
     await page.getByRole('button', { name: 'Settings' }).click();
     await expect(page.getByLabel('Flag wrong values live (kid-friendly)')).not.toBeChecked();
+    await expect(page.getByLabel('Background music')).not.toBeChecked();
   });
 });

@@ -845,14 +845,6 @@ body {
   gap: var(--hs-space-2);
 }
 
-.hs-setting-row[data-disabled='true'] {
-  opacity: 0.68;
-}
-
-.hs-setting-row[data-disabled='true'] .hs-checkbox-label {
-  cursor: not-allowed;
-}
-
 .hs-checkbox-label {
   min-height: 44px;
   display: flex;

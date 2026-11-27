@@ -86,6 +86,11 @@ export {
   isPuzzleSolved,
 } from './engine/selectors';
 export {
+  detectNewlyCompletedUnits,
+  isUnitComplete,
+  type NewlyCompletedUnits,
+} from './engine/unitCompletion';
+export {
   SUDOKU_STATE_SCHEMA_VERSION,
   deserializeSudokuState,
   extractSudokuStats,

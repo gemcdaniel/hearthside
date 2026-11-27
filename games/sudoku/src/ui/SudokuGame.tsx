@@ -1,6 +1,6 @@
 import type { ShellServices } from '@hearthside/game-core';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BOARD_SIZE, COL_OF, GRID_SIZE, ROW_OF } from '../engine/boardMath';
+import { BOARD_SIZE, COL_OF, GRID_SIZE, PEERS, ROW_OF } from '../engine/boardMath';
 import {
   computeDailySeed,
   computeOverflowSeed,
@@ -23,6 +23,7 @@ import {
   getRemainingDigitCounts,
   getWrongValueCells,
 } from '../engine/selectors';
+import { detectNewlyCompletedUnits } from '../engine/unitCompletion';
 import {
   SUDOKU_STATE_SCHEMA_VERSION,
   deserializeSudokuState,
@@ -128,6 +129,26 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
   const [stats, setStats] = useState<SudokuProfileStats>(createEmptySudokuStats);
   const [statsOpen, setStatsOpen] = useState(false);
   const [victorySummary, setVictorySummary] = useState<VictorySummary | null>(null);
+  const [popEffect, setPopEffect] = useState<{
+    readonly cells: ReadonlySet<number>;
+    readonly seq: number;
+  } | null>(null);
+  const [unitSweepEffect, setUnitSweepEffect] = useState<{
+    readonly delayByCell: Readonly<Record<number, number>>;
+    readonly seq: number;
+  } | null>(null);
+  const [nudgeEffect, setNudgeEffect] = useState<{
+    readonly cells: ReadonlySet<number>;
+    readonly seq: number;
+  } | null>(null);
+  const [victoryRippleActive, setVictoryRippleActive] = useState(false);
+
+  const effectSeqRef = useRef(0);
+  const effectTimersRef = useRef<{
+    pop: ReturnType<typeof setTimeout> | null;
+    sweep: ReturnType<typeof setTimeout> | null;
+    nudge: ReturnType<typeof setTimeout> | null;
+  }>({ pop: null, sweep: null, nudge: null });
 
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -142,6 +163,72 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
   const completedIdsRef = useRef<Set<string>>(new Set());
   const hintRequestSeqRef = useRef(0);
   const overflowCountRef = useRef(0);
+
+  const clearMotionEffects = useCallback(() => {
+    const timers = effectTimersRef.current;
+    if (timers.pop) {
+      clearTimeout(timers.pop);
+      timers.pop = null;
+    }
+    if (timers.sweep) {
+      clearTimeout(timers.sweep);
+      timers.sweep = null;
+    }
+    if (timers.nudge) {
+      clearTimeout(timers.nudge);
+      timers.nudge = null;
+    }
+    setPopEffect(null);
+    setUnitSweepEffect(null);
+    setNudgeEffect(null);
+  }, []);
+
+  const triggerPop = useCallback((cells: readonly number[]) => {
+    if (cells.length === 0) return;
+    if (effectTimersRef.current.pop) {
+      clearTimeout(effectTimersRef.current.pop);
+    }
+    effectSeqRef.current += 1;
+    setPopEffect({ cells: new Set(cells), seq: effectSeqRef.current });
+    effectTimersRef.current.pop = setTimeout(() => {
+      effectTimersRef.current.pop = null;
+      setPopEffect(null);
+    }, 180);
+  }, []);
+
+  const triggerUnitSweep = useCallback((delayByCell: Readonly<Record<number, number>>) => {
+    if (effectTimersRef.current.sweep) {
+      clearTimeout(effectTimersRef.current.sweep);
+    }
+    effectSeqRef.current += 1;
+    setUnitSweepEffect({ delayByCell, seq: effectSeqRef.current });
+    effectTimersRef.current.sweep = setTimeout(() => {
+      effectTimersRef.current.sweep = null;
+      setUnitSweepEffect(null);
+    }, 700);
+  }, []);
+
+  const triggerNudge = useCallback((cells: readonly number[]) => {
+    if (cells.length === 0) return;
+    if (effectTimersRef.current.nudge) {
+      clearTimeout(effectTimersRef.current.nudge);
+    }
+    effectSeqRef.current += 1;
+    setNudgeEffect({ cells: new Set(cells), seq: effectSeqRef.current });
+    effectTimersRef.current.nudge = setTimeout(() => {
+      effectTimersRef.current.nudge = null;
+      setNudgeEffect(null);
+    }, 260);
+  }, []);
+
+  useEffect(() => {
+    const timers = effectTimersRef.current;
+    return () => {
+      if (timers.pop) clearTimeout(timers.pop);
+      if (timers.sweep) clearTimeout(timers.sweep);
+      if (timers.nudge) clearTimeout(timers.nudge);
+    };
+  }, []);
 
   const persistSave = useCallback(
     async (snapshot: SudokuState) => {
@@ -355,6 +442,9 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
 
     setActiveHint({ kind: 'idle' });
     setCheckMessage(null);
+    setUnitSweepEffect(null);
+    setNudgeEffect(null);
+    setVictoryRippleActive(true);
     servicesRef.current.audio.playSfx('win');
 
     const snapshot = state;
@@ -461,24 +551,53 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
 
       const next = reduceSudoku(current, sudokuActions.placeDigit(cell, digit));
       if (next !== current) {
-        const hasFlaggedConflict =
-          servicesRef.current.settings.sudoku.flagDuplicateConflicts &&
-          getDuplicateConflicts(next.cells).includes(cell);
-        const hasFlaggedWrong =
-          servicesRef.current.settings.sudoku.flagWrongValues &&
-          getWrongValueCells(next.cells, next.puzzle.solution).includes(cell);
+        triggerPop([cell]);
 
-        if (!next.completed) {
-          servicesRef.current.audio.playSfx(
-            hasFlaggedConflict || hasFlaggedWrong ? 'conflict' : 'place',
-          );
+        const conflictSet = servicesRef.current.settings.sudoku.flagDuplicateConflicts
+          ? new Set(getDuplicateConflicts(next.cells))
+          : new Set<number>();
+        const wrongSet = servicesRef.current.settings.sudoku.flagWrongValues
+          ? new Set(getWrongValueCells(next.cells, next.puzzle.solution))
+          : new Set<number>();
+        const hasFlaggedConflict = conflictSet.has(cell);
+        const hasFlaggedWrong = wrongSet.has(cell);
+
+        if (hasFlaggedConflict || hasFlaggedWrong) {
+          const nudged = new Set<number>([cell]);
+          if (hasFlaggedConflict) {
+            for (const peerIdx of PEERS[cell] ?? []) {
+              if (next.cells[peerIdx]?.value === digit && conflictSet.has(peerIdx)) {
+                nudged.add(peerIdx);
+              }
+            }
+          }
+          triggerNudge(Array.from(nudged));
+          if (!next.completed) {
+            servicesRef.current.audio.playSfx('conflict');
+          }
+        } else if (!next.completed) {
+          const newlyCompleted = detectNewlyCompletedUnits(current.cells, next.cells, [cell]);
+          if (newlyCompleted.cells.length > 0) {
+            triggerUnitSweep(newlyCompleted.delayByCell);
+            servicesRef.current.audio.playSfx('unitComplete');
+          } else {
+            servicesRef.current.audio.playSfx('place');
+          }
         }
+
         setCheckMessage(null);
         clearTransientHint();
         applyAndSave(next);
       }
     },
-    [applyAndSave, clearTransientHint, generatingPuzzle],
+    [
+      applyAndSave,
+      clearTransientHint,
+      generatingPuzzle,
+      triggerNudge,
+      triggerPop,
+      triggerUnitSweep,
+    ],
   );
 
   const handleErase = useCallback(() => {
@@ -501,6 +620,8 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
     if (next !== current) {
       servicesRef.current.audio.playSfx('tap');
       setCheckMessage(null);
+      setUnitSweepEffect(null);
+      setNudgeEffect(null);
       clearTransientHint();
       applyAndSave(next);
     }
@@ -512,6 +633,8 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
     if (next !== current) {
       servicesRef.current.audio.playSfx('tap');
       setCheckMessage(null);
+      setUnitSweepEffect(null);
+      setNudgeEffect(null);
       clearTransientHint();
       applyAndSave(next);
     }
@@ -549,6 +672,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
       servicesRef.current.audio.playSfx('tap');
       setCheckMessage('Everything entered so far matches the solution!');
     } else {
+      triggerNudge(next.checkedWrongCells);
       servicesRef.current.audio.playSfx('conflict');
       setCheckMessage(
         `${next.checkedWrongCells.length} wrong ${
@@ -556,7 +680,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
         } highlighted.`,
       );
     }
-  }, [generatingPuzzle]);
+  }, [generatingPuzzle, triggerNudge]);
 
   const applyHintStep = useCallback(
     (step: HintStep) => {
@@ -566,8 +690,21 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
         sudokuActions.applyHintStep(step.placements, step.eliminations),
       );
       if (next !== current) {
+        const placedCells = step.placements.map((p) => p.cell);
+        if (placedCells.length > 0) {
+          triggerPop(placedCells);
+        }
         if (!next.completed) {
-          servicesRef.current.audio.playSfx('hint');
+          const newlyCompleted =
+            placedCells.length > 0
+              ? detectNewlyCompletedUnits(current.cells, next.cells, placedCells)
+              : null;
+          if (newlyCompleted && newlyCompleted.cells.length > 0) {
+            triggerUnitSweep(newlyCompleted.delayByCell);
+            servicesRef.current.audio.playSfx('unitComplete');
+          } else {
+            servicesRef.current.audio.playSfx('hint');
+          }
         }
         setActiveHint({ kind: 'idle' });
         setCheckMessage(
@@ -583,7 +720,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
         });
       }
     },
-    [applyAndSave],
+    [applyAndSave, triggerPop, triggerUnitSweep],
   );
 
   const handleHint = useCallback(async () => {
@@ -673,7 +810,9 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
 
     setConfirmNewPuzzle(false);
     setVictorySummary(null);
+    setVictoryRippleActive(false);
     setCheckMessage(null);
+    clearMotionEffects();
     clearTransientHint();
 
     let nextPuzzle: PuzzleRecord;
@@ -697,6 +836,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
   }, [
     difficulty,
     applyAndSave,
+    clearMotionEffects,
     clearTransientHint,
     incrementStartedStats,
     resolveNextStandardPuzzle,
@@ -1008,6 +1148,13 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
             flagDuplicateConflicts={services.settings.sudoku.flagDuplicateConflicts}
             flagWrongValues={services.settings.sudoku.flagWrongValues}
             activeHint={activeHint}
+            popCells={popEffect?.cells}
+            popSeq={popEffect?.seq}
+            sweepDelayByCell={unitSweepEffect?.delayByCell}
+            sweepSeq={unitSweepEffect?.seq}
+            nudgeCells={nudgeEffect?.cells}
+            nudgeSeq={nudgeEffect?.seq}
+            victoryRipple={victoryRippleActive}
             onSelectCell={handleSelectCell}
             onResume={handleTogglePause}
             stageOverlay={stageOverlay}

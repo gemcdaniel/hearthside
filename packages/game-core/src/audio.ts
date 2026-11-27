@@ -1,4 +1,5 @@
-export type AudioCue = 'tap' | 'place' | 'note' | 'erase' | 'conflict' | 'hint' | 'win';
+export type AudioCue =
+  'tap' | 'place' | 'note' | 'erase' | 'conflict' | 'hint' | 'unitComplete' | 'win';
 
 export const AUDIO_CUES: readonly AudioCue[] = [
   'tap',
@@ -7,6 +8,7 @@ export const AUDIO_CUES: readonly AudioCue[] = [
   'erase',
   'conflict',
   'hint',
+  'unitComplete',
   'win',
 ];
 

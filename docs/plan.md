@@ -1,8 +1,8 @@
-# Hearthside: Project Plan v0.9 (Phase 2 Ready)
+# Hearthside: Project Plan v0.10 (Phase 3 Active)
 
-Draft v0.9, November 27, 2026. Status legend: **Confirmed** means locked by the project owner; **Proposed** means recommended default awaiting confirmation if changes are needed; **Open** means unresolved.
+Draft v0.10, November 27, 2026. Status legend: **Confirmed** means locked by the project owner; **Proposed** means recommended default awaiting confirmation if changes are needed; **Open** means unresolved.
 
-Version 0.9 closes out Phase 1 (pure-Go Sudoku engine with Easy/Medium/Hard logical techniques, deterministic seeded generator, verified 150-puzzle starter bank via `genbank`, and production Standard Go WASM at 4.38 MiB raw / 1.20 MiB gzip-9 with CI green), locks Phase 2 design decisions (D20–D24), and adds detailed Phase 2 implementation runs (Section 13).
+Version 0.10 marks **Phase 2 complete** (AIO game shell, IndexedDB storage + export/import, local profiles, pure Sudoku engine & notes invariants D8/D12/D20, split mistake checking D21, Stitch-aligned `100dvh` zero-scroll UX, 4-tier WASM hints, deterministic offline Daily Puzzles D22, per-profile stats, and Playwright E2E green), updates **D24** for procedural Web Audio ambient music tailored per theme, and lays out **Phase 3 (Polish and 1.0)** execution runs in Section 14.
 
 ## 1. Vision and scope
 
@@ -115,7 +115,7 @@ D1 to D24 are confirmed unless noted as Proposed.
 
 **D23. Local profiles in offline v1 (confirmed).** Lightweight same-device profiles consisting of a display name and preset avatar icon/color (no PIN required in offline v1). Each profile isolates in-progress games, stats, theme/mode selection, and gameplay settings (including D21 toggles), with a quick switcher in the shell header.
 
-**D24. Audio rollout (confirmed).** Phase 2 implements the full audio service (independent SFX and Music mute/volume toggles, unlocked on first pointer gesture) with crisp Web Audio synthesized SFX (tap, place, note, erase, conflict, completion). Background music tracks are added during Phase 3 polish; until then, the Settings modal clearly marks Background Music controls as disabled with a "Coming in Phase 3" badge.
+**D24. Audio rollout (confirmed).** Phase 2 built the full Web Audio service (independent SFX and Music mute/volume toggles persisted per profile, unlocked on first pointer or keyboard gesture) with synthesized SFX cues. Phase 3 delivers **procedural Web Audio ambient music** tailored per theme (**Clean Minimal**: airy crystalline pentatonic/major-7th tones; **Warm Hearthside**: cozy low-passed felt-piano / mellow chord progressions) for v1.0, requiring zero external audio files or network fetches. Playback uses click-free linear/target envelopes (~150–300ms fades, never `exponentialRampToValueAtTime(0, ...)`), respects browser autoplay policy, crossfades smoothly on live theme changes, and pauses/resumes automatically on `document.visibilitychange`, while keeping the `MusicChannel` interface extensible for future file-backed `.ogg`/`.mp3` tracks without changing the Settings UI.
 
 ## 4. Architecture
 
@@ -193,7 +193,7 @@ A puzzle's tier is the hardest technique it needs. Tiers are tuned by playtestin
 - Save and resume: automatic per profile in IndexedDB, supporting one in-progress game per difficulty plus the active Daily Puzzle.
 - Stats: per profile — games started and won, best and average time by difficulty, current/best daily streaks, hint usage.
 - Themes: Clean Minimal and Warm Hearthside, each with Light and Dark modes (per-profile preference).
-- Sound: independent SFX and Music mute/volume toggles; Web Audio synthesized SFX in Phase 2, music tracks in Phase 3 (D24).
+- Sound: independent SFX and Music mute/volume toggles; refined Web Audio synthesized SFX (including completed-unit celebration) and procedural per-theme ambient music in Phase 3 behind an extensible `MusicChannel` interface (D24).
 
 ### 6.5 Input (Confirmed)
 
@@ -217,23 +217,23 @@ Exit met: decisions D1–D19 locked, Standard Go WASM and device spikes passed, 
 
 Exit met: pure-Go board, MRV uniqueness solver, Easy/Medium/Hard logical solver with step traces, deterministic generator, 150-puzzle starter bank via `genbank`, production Standard Go WASM at 1.20 MiB gzip-9, CI green.
 
-### Phase 2: Shell and Sudoku (offline)
+### Phase 2: Shell and Sudoku (offline) (Completed)
 
 1. App shell: library screen, settings, theme switcher, local profiles with quick switching, IndexedDB storage layer + export/import, audio service.
 2. Game plugin interface (`packages/game-core`) and the Sudoku plugin (`games/sudoku`).
 3. Pure Sudoku reducer, event log, undo/redo, D8/D12/D20 notes layers, D21 split mistake-checking model.
-4. Interactive vector-crisp board, responsive portrait/landscape layout, number pad, notes & auto-show toggles, timer and pause curtain.
+4. Interactive vector-crisp board, responsive portrait/landscape layout (`100dvh` zero-scroll lock), number pad, notes & auto-show toggles, timer and pause curtain.
 5. 4-tier progressive WASM hints, bundled starter bank + deterministic date-seeded Daily Puzzle (D22), per-profile stats, and Playwright E2E coverage.
 
-Exit: a complete offline game playable on all supported family devices. Section 13 details each run.
+Exit met: complete offline Sudoku playable across desktop and mobile profiles with local persistence, 4-tier WASM hints, Daily Puzzle caching, stats/victory flows, and green Vitest + Playwright E2E checks (Section 13).
 
 ### Phase 3: Polish and 1.0
 
-1. Visual polish pass, animation, sound design and background music tracks (D24).
-2. Accessibility and performance passes against agreed budgets.
-3. Family playtest, especially with the children; tune difficulty tiers from feedback.
+1. Run 1: Reduced-motion-safe micro-interactions (digit pop-in, completed unit sweep + `unitComplete` cue, conflict nudge, victory ripple), SFX refinement, and procedural Web Audio ambient music tailored per theme (D24).
+2. Run 2: Automated accessibility audit (`@axe-core/playwright`), modal/board focus management, and Lighthouse performance pass against agreed budgets.
+3. Run 3: Family playtest, especially with the children; difficulty tier tuning; and `v1.0.0` release tag.
 
-Exit: 1.0 offline release.
+Exit: 1.0 offline release (Section 14).
 
 ### Phase 4: Backend foundation on the home server
 
@@ -333,9 +333,9 @@ Phase 1 delivered the pure-Go Sudoku engine in `engine/sudoku` shared by both th
 - [x] Deterministic generator produces verified unique, graded puzzles across all three tiers repeatable from `(seed, engineVersion, difficulty)`.
 - [x] 150-puzzle starter bank JSON generated and verified; production WASM meets size and speed budgets; CI green.
 
-## 13. Phase 2 in detail (Shell and Offline Sudoku)
+## 13. Phase 2 in detail (Completed)
 
-Phase 2 turns the walking skeleton and Phase 1 engine into a complete, launch-quality offline Sudoku experience inside a reusable AIO game shell, executed across four focused runs.
+Phase 2 delivered the complete offline Sudoku experience inside the reusable AIO game shell across four implementation runs plus the Run 3.5 Stitch UX & `100dvh` layout overhaul.
 
 ### 13.1 Run 1: Framework (`packages/game-core`), storage, local profiles, audio service, and `apps/web` shell
 
@@ -415,14 +415,54 @@ Done when: a full game can be played start-to-finish offline via touch, stylus, 
 
 Done when: all Vitest, Playwright E2E, Go, and build checks pass locally and in CI, and the deployed build at `https://hearthside.example.com` plays a complete offline game on desktop and Android.
 
-### 13.5 Phase 2 exit checklist
+### 13.5 Phase 2 exit checklist (Completed)
 
 - [x] App shell (`apps/web`), plugin contract (`packages/game-core`), IndexedDB storage + export/import, local profiles, and audio service are complete.
 - [x] Pure Sudoku reducer passes exhaustive unit tests for D8, D12, D20, and D21 invariants.
-- [x] Interactive Sudoku UI is responsive and crisp across phone, tablet (touch + S Pen), and 4K desktop in both themes and light/dark modes.
+- [x] Interactive Sudoku UI is responsive and crisp across phone, tablet (touch + S Pen), and 4K desktop in both themes and light/dark modes (`100dvh` zero-scroll, 0px layout shift).
 - [x] 4-tier progressive WASM hints, starter bank + deterministic offline Daily Puzzle, and per-profile stats work 100% offline.
-- [ ] Playwright E2E suite and GitHub Actions CI are green (Playwright E2E passes locally; CI E2E job added and ready to run on push).
+- [x] Playwright E2E suite and GitHub Actions CI are green.
 
-## 14. Next step
+## 14. Phase 3 in detail (Polish and 1.0)
 
-Start **Phase 2, Run 1** in Antigravity (`packages/game-core`, IndexedDB storage + export/import, local profiles, audio service, `apps/web` AIO shell, ADRs D20–D24, and `.agents/rules/sudoku-rules.md` update).
+Phase 3 elevates Hearthside from feature-complete offline play to a warm, tactile, accessible `v1.0.0` offline release across three runs.
+
+### 14.1 Run 1: Micro-interactions, SFX refinement, and procedural Web Audio ambient music
+
+1. **Procedural Web Audio ambient music (`apps/web/src/audio/`, D24):**
+   - Re-enable the per-profile **Background Music** toggle and volume slider in Settings (removing the `"Coming in Phase 3"` badge).
+   - Implement a `MusicChannel` abstraction backed by `ProceduralAmbientMusicChannel` with distinct low-fatigue soundscapes for **Clean Minimal** (airy pentatonic/major-7th) and **Warm Hearthside** (warm low-passed felt-piano / mellow chords), extensible to future `.ogg`/`.mp3` buffers.
+   - Start cleanly on first pointer/keyboard gesture, use click-free linear/target gain ramps (~150–300ms fades, never `exponentialRampToValueAtTime(0, ...)`), crossfade smoothly on live theme changes, and auto-pause/resume on `document.visibilitychange`.
+2. **SFX polish & `unitComplete` cue (`packages/game-core`, `apps/web/src/audio/`):**
+   - Add `'unitComplete'` to `AudioCue` and refine gain staging/envelopes across `tap`, `place`, `note`, `erase`, `conflict`, `hint`, `unitComplete`, and `win` so SFX stay crisp and clip-free alongside ambient music.
+3. **Reduced-motion-safe Sudoku micro-interactions (`packages/ui`, `games/sudoku`):**
+   - Add motion timing/easing tokens and completed-unit tokens in `packages/ui` across all four theme×mode variants; gate all non-essential animations behind `@media (prefers-reduced-motion: no-preference)` animating GPU-composited properties only (`transform`, `opacity`, token surfaces) with zero layout shift.
+   - Add digit pop-in (~120ms), pure board-state completed-unit detector + staggered ~450ms unit sweep (solution-independent so adult mode never leaks unflagged wrong values; skipped on undo/redo and final `win`), conflict/wrong-entry horizontal micro-shake (~200ms), and victory modal/board ripple polish.
+
+Done when: ambient music plays cleanly per theme without clicks/pops or autoplay violations, `unitComplete` and unit-sweep detectors pass pure + UI Vitest specs, Settings music toggle is enabled/persisted, and all unit + Playwright E2E + layout regression checks pass.
+
+### 14.2 Run 2: Accessibility audit, focus management, and performance pass
+
+1. Run automated WCAG 2.1 AA checks across Library, Settings, Sudoku board, Hint flow, Stats, and Victory modals using `@axe-core/playwright`.
+2. Audit and refine keyboard focus restoration on modal open/close (`SettingsModal`, `SudokuStatsModal`, `SudokuVictoryModal`), Pause curtain resume, and grid arrow-key roving focus.
+3. Profile production bundle size, WASM cold-start latency, Core Web Vitals / Lighthouse PWA + Performance scores across desktop and throttled mobile profiles, tuning workbox precache and animation compositing if needed.
+
+Done when: zero serious/critical `@axe-core/playwright` violations remain, modal/board keyboard focus traps and restores cleanly, and agreed PWA/performance budgets are met.
+
+### 14.3 Run 3: Family playtest, difficulty tuning, and `v1.0.0` release
+
+1. Conduct family playtesting across desktop, laptop, and Android phones/tablets (including kid profiles and S Pen stylus input).
+2. Tune Easy / Medium / Hard difficulty boundaries and solver technique weights based on playtest notes; regenerate or rebalance `starter-bank.json` if needed.
+3. Run full end-to-end offline verification across Go engine tests, Vitest, Playwright E2E, production Docker/nginx preview, and tag `v1.0.0`.
+
+Done when: family playtest feedback is incorporated, all CI checks pass, and `v1.0.0` is tagged.
+
+### 14.4 Phase 3 exit checklist
+
+- [ ] Procedural ambient music per theme, refined SFX + `unitComplete`, and reduced-motion-safe micro-interactions complete and tested.
+- [ ] `@axe-core/playwright` audit, keyboard focus management, and Lighthouse performance budgets pass.
+- [ ] Family playtest feedback addressed, difficulty tiers tuned, and `v1.0.0` offline release tagged.
+
+## 15. Next step
+
+Complete **Phase 3, Run 1** verification, then proceed to **Phase 3, Run 2** (`@axe-core/playwright` accessibility audit, focus restoration, and performance pass).

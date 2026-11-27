@@ -19,6 +19,13 @@ export interface SudokuBoardProps {
   readonly flagDuplicateConflicts: boolean;
   readonly flagWrongValues: boolean;
   readonly activeHint?: ActiveHintState;
+  readonly popCells?: ReadonlySet<number>;
+  readonly popSeq?: number;
+  readonly sweepDelayByCell?: Readonly<Record<number, number>>;
+  readonly sweepSeq?: number;
+  readonly nudgeCells?: ReadonlySet<number>;
+  readonly nudgeSeq?: number;
+  readonly victoryRipple?: boolean;
   readonly onSelectCell: (cell: number) => void;
   readonly onResume: () => void;
   readonly stageOverlay?: ReactNode;
@@ -29,6 +36,13 @@ export function SudokuBoard({
   flagDuplicateConflicts,
   flagWrongValues,
   activeHint,
+  popCells,
+  popSeq = 0,
+  sweepDelayByCell,
+  sweepSeq = 0,
+  nudgeCells,
+  nudgeSeq = 0,
+  victoryRipple = false,
   onSelectCell,
   onResume,
   stageOverlay,
@@ -94,6 +108,7 @@ export function SudokuBoard({
           aria-rowcount={GRID_SIZE}
           aria-colcount={GRID_SIZE}
           data-autoshow={state.autoShowEnabled ? 'true' : 'false'}
+          data-victory-ripple={victoryRipple && !state.paused ? 'true' : 'false'}
         >
           {CELL_INDICES.map((idx) => {
             const cell = state.cells[idx];
@@ -148,6 +163,11 @@ export function SudokuBoard({
             }
             if (isSelected) ariaParts.push('selected');
 
+            const sweepDelay = !state.paused ? sweepDelayByCell?.[idx] : undefined;
+            const isUnitCompleted = sweepDelay !== undefined;
+            const isPopped = !state.paused && Boolean(popCells?.has(idx));
+            const isNudged = !state.paused && Boolean(nudgeCells?.has(idx));
+
             return (
               <button
                 key={idx}
@@ -160,6 +180,8 @@ export function SudokuBoard({
                 data-conflict={isConflict ? 'true' : 'false'}
                 data-wrong={isWrong ? 'true' : 'false'}
                 data-autoshow={state.autoShowEnabled ? 'true' : 'false'}
+                data-unit-complete={isUnitCompleted ? 'true' : 'false'}
+                data-nudge={isNudged ? 'true' : 'false'}
                 data-row={row}
                 data-col={col}
                 aria-rowindex={row + 1}
@@ -170,8 +192,32 @@ export function SudokuBoard({
                 onPointerDown={() => onSelectCell(idx)}
                 onClick={() => onSelectCell(idx)}
               >
+                {isUnitCompleted ? (
+                  <span
+                    key={`sweep-${sweepSeq}`}
+                    className="hs-cell-sweep"
+                    aria-hidden="true"
+                    style={{ animationDelay: `${sweepDelay}ms` }}
+                  />
+                ) : null}
+
+                {victoryRipple && !state.paused ? (
+                  <span
+                    className="hs-cell-victory-wave"
+                    aria-hidden="true"
+                    style={{ animationDelay: `${(row + col) * 28}ms` }}
+                  />
+                ) : null}
+
                 {!state.paused && cell.value !== 0 ? (
-                  <span className="hs-sudoku-digit">{cell.value}</span>
+                  <span
+                    key={isNudged ? `nudge-${nudgeSeq}` : isPopped ? `pop-${popSeq}` : 'digit'}
+                    className="hs-sudoku-digit"
+                    data-pop={isPopped ? 'true' : 'false'}
+                    data-nudge={isNudged ? 'true' : 'false'}
+                  >
+                    {cell.value}
+                  </span>
                 ) : !state.paused && previewDigit !== undefined ? (
                   <span className="hs-sudoku-hint-preview" aria-hidden="true">
                     {previewDigit}

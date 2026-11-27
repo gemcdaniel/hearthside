@@ -450,13 +450,20 @@ export function SettingsModal({
               </div>
             </div>
 
-            <div className="hs-setting-row" data-disabled="true">
+            <div className="hs-setting-row">
               <label className="hs-checkbox-label">
-                <input type="checkbox" checked={false} disabled aria-label="Background music" />
+                <input
+                  type="checkbox"
+                  checked={settings.musicEnabled}
+                  aria-label="Background music"
+                  onChange={(event) => {
+                    if (event.target.checked) {
+                      void audio.unlock();
+                    }
+                    onUpdateSettings({ ...settings, musicEnabled: event.target.checked });
+                  }}
+                />
                 <span>Background music</span>
-                <span className="hs-badge" data-tone="warning">
-                  Coming in Phase 3
-                </span>
               </label>
 
               <div className="hs-slider-group">
@@ -469,7 +476,12 @@ export function SettingsModal({
                   min={0}
                   max={100}
                   value={Math.round(settings.musicVolume * 100)}
-                  disabled
+                  onChange={(event) =>
+                    onUpdateSettings({
+                      ...settings,
+                      musicVolume: Number(event.target.value) / 100,
+                    })
+                  }
                 />
               </div>
             </div>
