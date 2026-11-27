@@ -65,8 +65,17 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest,wasm,json,woff2}'],
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
         navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,
       },
     }),
   ],
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
+    },
+  },
 });

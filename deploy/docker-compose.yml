@@ -6,19 +6,65 @@ services:
     restart: unless-stopped
     ports:
       - 8082:80
+    depends_on:
+      hearthside-api:
+        condition: service_healthy
+  #     networks:
+  #       - traefik
+  #     labels:
+  #       - 'traefik.enable=true'
+  #       - 'traefik.docker.network=${TRAEFIK_NETWORK:-traefik}'
+  #       - 'traefik.http.routers.hearthside-web.rule=Host(`${HEARTHSIDE_HOST:-hearthside.example.com}`)'
+  #       - 'traefik.http.routers.hearthside-web.priority=1'
+  #       - 'traefik.http.routers.hearthside-web.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}'
+  #       - 'traefik.http.routers.hearthside-web.tls=true'
+  #       - 'traefik.http.routers.hearthside-web.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}'
+  #       - 'traefik.http.routers.hearthside-web.middlewares=hearthside-headers@docker${TRAEFIK_INTERNAL_MIDDLEWARE:+,}${TRAEFIK_INTERNAL_MIDDLEWARE:-}'
+  #       - 'traefik.http.services.hearthside-web.loadbalancer.server.port=80'
+  #       - 'traefik.http.middlewares.hearthside-headers.headers.referrerPolicy=no-referrer'
+  #       - 'traefik.http.middlewares.hearthside-headers.headers.contentTypeNosniff=true'
+
+  hearthside-api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    ports:
+      - 8080:8080
+    volumes:
+      - hearthside_data:/data
+    environment:
+      HEARTHSIDE_ADDR: ':8080'
+      HEARTHSIDE_DB_PATH: '/data/hearthside.db'
+      HEARTHSIDE_PUBLIC_BASE_URL: '${HEARTHSIDE_PUBLIC_BASE_URL:-http://localhost:8082}'
+      HEARTHSIDE_COOKIE_SECURE: '${HEARTHSIDE_COOKIE_SECURE:-false}'
+      HEARTHSIDE_LOG_LEVEL: '${HEARTHSIDE_LOG_LEVEL:-info}'
+      HEARTHSIDE_OIDC_ISSUER_URL: '${HEARTHSIDE_OIDC_ISSUER_URL:-}'
+      HEARTHSIDE_OIDC_CLIENT_ID: '${HEARTHSIDE_OIDC_CLIENT_ID:-}'
+      HEARTHSIDE_OIDC_CLIENT_SECRET: '${HEARTHSIDE_OIDC_CLIENT_SECRET:-}'
+      HEARTHSIDE_OIDC_PROVIDER_NAME: '${HEARTHSIDE_OIDC_PROVIDER_NAME:-}'
+      HEARTHSIDE_OIDC_SCOPES: '${HEARTHSIDE_OIDC_SCOPES:-}'
+    healthcheck:
+      test: ['CMD', '/usr/local/bin/hearthside-api', '-healthcheck']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 #     networks:
 #       - traefik
 #     labels:
 #       - 'traefik.enable=true'
 #       - 'traefik.docker.network=${TRAEFIK_NETWORK:-traefik}'
-#       - 'traefik.http.routers.hearthside-web.rule=Host(`hearthside.example.com`)'
-#       - 'traefik.http.routers.hearthside-web.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}'
-#       - 'traefik.http.routers.hearthside-web.tls=true'
-#       - 'traefik.http.routers.hearthside-web.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}'
-#       - 'traefik.http.routers.hearthside-web.middlewares=hearthside-headers@docker${TRAEFIK_INTERNAL_MIDDLEWARE:+,}${TRAEFIK_INTERNAL_MIDDLEWARE:-}'
-#       - 'traefik.http.services.hearthside-web.loadbalancer.server.port=80'
-#       - 'traefik.http.middlewares.hearthside-headers.headers.referrerPolicy=no-referrer'
-#       - 'traefik.http.middlewares.hearthside-headers.headers.contentTypeNosniff=true'
+#       - 'traefik.http.routers.hearthside-api.rule=Host(`${HEARTHSIDE_HOST:-hearthside.example.com}`) && PathPrefix(`/api`)'
+#       - 'traefik.http.routers.hearthside-api.priority=100'
+#       - 'traefik.http.routers.hearthside-api.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}'
+#       - 'traefik.http.routers.hearthside-api.tls=true'
+#       - 'traefik.http.routers.hearthside-api.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}'
+#       - 'traefik.http.routers.hearthside-api.middlewares=hearthside-headers@docker${TRAEFIK_INTERNAL_MIDDLEWARE:+,}${TRAEFIK_INTERNAL_MIDDLEWARE:-}'
+#       - 'traefik.http.services.hearthside-api.loadbalancer.server.port=8080'
+
+volumes:
+  hearthside_data:
 
 # networks:
 #   traefik:

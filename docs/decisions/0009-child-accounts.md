@@ -9,7 +9,7 @@ Children are primary users of Hearthside and play alongside parents, requiring s
 
 ## Decision
 
-Child profiles sit under a parent's household account so parents and children can play together within one household. Children do not need their own login or email for this model, even when they have Google Family accounts. Adult Google sign-in uses a Google Cloud OAuth client with a public HTTPS redirect address, and offline play never depends on sign-in.
+Child profiles sit under a parent's household account so parents and children can play together within one household. Children do not need their own login, password, or email for this model, even when they have Google Family accounts. Adult OIDC sign-in uses standard OpenID Connect Discovery + PKCE with an explicit HTTPS redirect URI (supporting Google Cloud OAuth or a self-hosted homelab IdP), and offline play never depends on sign-in.
 
 ## Consequences
 

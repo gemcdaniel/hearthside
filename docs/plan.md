@@ -1,8 +1,8 @@
-# Hearthside: Project Plan v1.0 (Offline Release Ready)
+# Hearthside: Project Plan v1.1 (Phase 4 Backend Foundation)
 
-Version 1.0, November 27, 2026. Status legend: **Confirmed** means locked by the project owner; **Proposed** means recommended default awaiting confirmation if changes are needed; **Open** means unresolved.
+Version 1.1, November 27, 2026. Status legend: **Confirmed** means locked by the project owner; **Proposed** means recommended default awaiting confirmation if changes are needed; **Open** means unresolved.
 
-Version 1.0 completes **Phase 3 (Polish and 1.0)**: reduced-motion-safe Sudoku micro-interactions, refined Web Audio SFX + `unitComplete` cue, procedural per-theme ambient music (D24), automated WCAG 2.1 AA audits across all 4 theme×mode variants (`@axe-core/playwright`), focus trapping & keyboard playability, dynamic `<meta name="theme-color">`, lazy chunk splitting, and `v1.0.0` release verification ahead of Phase 4 backend services.
+Version 1.1 begins **Phase 4 (Backend foundation on the home server)** atop the shipped offline-first `v1.0.0` PWA release, specifying the pure-Go SQLite API architecture (`modernc.org/sqlite`), invite-only Email + Password (Argon2id) and generic OpenID Connect (Discovery + PKCE) household accounts, scheduled puzzle bank replenishment, and deterministic daily puzzle delivery (D25–D29).
 
 ## 1. Vision and scope
 
@@ -41,7 +41,7 @@ Non-goals (Confirmed): monetization, app-store publishing, user analytics, Apple
 
 - Wanted: accounts, cloud save, daily puzzles and leaderboards, delivered in follow-on phases (Phases 4 to 7 and 9) after an offline-first 1.0. Offline mode must keep working without them.
 - The backend is private and invite-only for the family, hosted on the Ubuntu home server behind Traefik with HTTPS (`hearthside.example.com`), internal-only initially and exposed externally when ready.
-- Email addresses are acceptable, and Google sign-in is an option (already used for Immich). Child profiles sit under a parent's household account, and parents and children can play together: a shared household view of leaderboards and daily results, same-device play with profile switching, and live co-op or head-to-head play on one puzzle across devices (D14).
+- Email + Password (Argon2id) and generic OpenID Connect (OIDC Discovery + PKCE, supporting Google or any self-hosted IdP such as Authentik/Pocket ID) are supported for invite-only adult accounts. Child profiles sit under a parent's household account without their own login or email, and parents and children can play together: a shared household view of leaderboards and daily results, same-device play with profile switching, and live co-op or head-to-head play on one puzzle across devices (D14).
 
 ### 2.4 Quality and content
 
@@ -61,9 +61,9 @@ Non-goals (Confirmed): monetization, app-store publishing, user analytics, Apple
 
 ## 3. Decisions
 
-D1 to D24 are confirmed unless noted as Proposed.
+D1 to D29 are confirmed unless noted as Proposed.
 
-**D1. Backend audience (confirmed).** Private and invite-only, for the family, on the home server, eventually reachable from the internet. Email addresses are acceptable, and Google sign-in is an option. The account model is settled in D9.
+**D1. Backend audience (confirmed).** Private and invite-only, for the family, on the home server, eventually reachable from the internet. Adult accounts authenticate via Email + Password (Argon2id) or generic OpenID Connect (Google or any self-hosted OIDC provider via Discovery + PKCE). The account model is settled in D9 and D27.
 
 **D2. Puzzle sourcing (confirmed).** Hybrid approach: the Go backend generates the puzzle bank and daily puzzles; the app ships a starter pack and tops it up when online; the same Go engine, compiled to Standard Go WebAssembly, handles hints and offline generation on the device (locked in Phase 0 Spike A and confirmed in Phase 1 at 1.20 MiB gzip-9).
 
@@ -82,7 +82,7 @@ D1 to D24 are confirmed unless noted as Proposed.
 - A placed number is removed from view in the notes of affected squares even when auto-show is off. Notes are hidden, not deleted: if the entry is cleared or undone, they return.
 - The technique tiers in section 6.3 are the starting point and will be refined after playtesting.
 
-**D9. Child accounts (confirmed).** Child profiles sit under a parent's household account, so parents and children can play together within one household. Children do not need their own login or email for this model, even though they have Google accounts in Google Family. Google sign-in for adults needs an OAuth client in Google Cloud and a public HTTPS redirect address, and offline play never depends on it.
+**D9. Child accounts (confirmed).** Child profiles sit under a parent's household account, so parents and children can play together within one household. Children do not need their own login, password, or email for this model, even though they may have Google Family accounts. Adult OIDC sign-in uses standard OpenID Connect Discovery + PKCE with an explicit HTTPS redirect URI (e.g., Google Cloud OAuth or a self-hosted homelab IdP), and offline play never depends on it.
 
 **D10. Access and deployment (confirmed).** Docker Compose behind Traefik with HTTPS (`hearthside.example.com`), internal-only during early phases and opened externally when ready (D16). Either way the PWA and API are served over HTTPS, which service workers require.
 
@@ -117,6 +117,16 @@ D1 to D24 are confirmed unless noted as Proposed.
 
 **D24. Audio rollout (confirmed).** Phase 2 built the full Web Audio service (independent SFX and Music mute/volume toggles persisted per profile, unlocked on first pointer or keyboard gesture) with synthesized SFX cues. Phase 3 delivers **procedural Web Audio ambient music** tailored per theme (**Clean Minimal**: airy crystalline pentatonic/major-7th tones; **Warm Hearthside**: cozy low-passed felt-piano / mellow chord progressions) for v1.0, requiring zero external audio files or network fetches. Playback uses click-free linear/target envelopes (~150–300ms fades, never `exponentialRampToValueAtTime(0, ...)`), respects browser autoplay policy, crossfades smoothly on live theme changes, and pauses/resumes automatically on `document.visibilitychange`, while keeping the `MusicChannel` interface extensible for future file-backed `.ogg`/`.mp3` tracks without changing the Settings UI.
 
+**D25. Same-origin `/api/*` routing & cookie sessions (confirmed).** Serve the Go API at `/api/*` on `hearthside.example.com` behind Traefik alongside the web PWA so frontend and backend share one origin. Browser sessions use `HttpOnly`, `Secure` (configurable `false` only for local HTTP dev), `SameSite=Lax` cookies backed by hashed opaque tokens in SQLite, with `Origin`/`Referer` verification on mutating endpoints and Workbox `navigateFallbackDenylist: [/^\/api\//]` so service-worker navigation fallback never intercepts API or OAuth callback routes.
+
+**D26. Stdlib `net/http` + pure-Go `modernc.org/sqlite` (confirmed).** `services/api` uses Go's standard library `net/http` router (`METHOD /path`), `log/slog` structured JSON logging (zero PII, emails, passwords, or session tokens), and pure-Go `modernc.org/sqlite` (`CGO_ENABLED=0`) with WAL mode, `foreign_keys=ON`, `busy_timeout=5000`, `MaxOpenConns(1)`, and embedded SQL migrations (`embed.FS`). `engine/sudoku` remains strictly free of HTTP, DB, and OS filesystem imports.
+
+**D27. Invite-only Email + Password and generic OIDC auth (confirmed).** Adult household accounts support Email + Password (Argon2id hashes) and any standard OpenID Connect provider configured via Discovery + Authorization Code + PKCE (supporting Google, Authentik, Pocket ID, Keycloak, etc., when OIDC env vars are configured). Registration is strictly invite-only via admin CLI / one-time household invite tokens with no open public signup.
+
+**D28. Daily puzzle seed parity with WASM (confirmed).** Server-side Daily Puzzles in Phase 4 use the exact deterministic `engine/sudoku` seed formula `(YYYY-MM-DD, difficulty, engineVersion)` established in D22 so online clients, cached offline devices, and non-signed-in players always receive the identical Daily Puzzle for a given calendar date and difficulty tier.
+
+**D29. Non-destructive local profile linking (confirmed).** Signing into a household account in Phase 4 links existing local IndexedDB profiles (e.g., Guest and family profiles created in `v1.0.0`) non-destructively to server-backed household profiles without wiping local games, notes, or stats. Sign-out or offline operation always preserves local playability.
+
 ## 4. Architecture
 
 ### 4.1 Client: PWA first
@@ -149,9 +159,9 @@ Each game provides: metadata, a serializable state schema, pure rules (a determi
 
 ### 4.4 Backend (Go)
 
-- Service: Go standard library or a small router; REST/JSON plus WebSocket for real-time.
-- Storage: SQLite to start (family scale), with migrations; moving to Postgres stays possible.
-- Auth: invite-only household accounts with email or Google sign-in (OpenID Connect); child profiles sit under a parent's household account (D9). Offline play never requires sign-in.
+- Service: Go standard library (`net/http` router, `log/slog` JSON logs); REST/JSON plus WebSocket for real-time in later phases (D26).
+- Storage: Pure-Go SQLite (`modernc.org/sqlite`, `CGO_ENABLED=0`) with WAL mode and embedded transactional migrations to start (family scale); moving to Postgres stays possible.
+- Auth: Same-origin cookie sessions (`HttpOnly`, `Secure`, `SameSite=Lax`) for invite-only household accounts with Email + Password (Argon2id) or generic OpenID Connect (Discovery + PKCE); child profiles sit under a parent's household account (D9, D25, D27). Offline play never requires sign-in.
 - Puzzle service: puzzle bank, difficulty grading, daily schedule.
 - Sync: versioned per-game save blobs; stats merged from event logs; conflict rule agreed before Phase 5 builds it.
 - Leaderboards: per puzzle and per day; the server re-validates submitted solutions.
@@ -235,14 +245,14 @@ Exit met: complete offline Sudoku playable across desktop and mobile profiles wi
 
 Exit met: Hearthside `v1.0.0` offline release ready across Windows, Linux, Android, and desktop/mobile PWA with zero critical/serious axe violations and all offline/WASM/E2E checks green (Section 14).
 
-### Phase 4: Backend foundation on the home server
+### Phase 4: Backend foundation on the home server (Active — Run 1)
 
-1. Go API skeleton, SQLite storage and migrations, Docker image and Docker Compose behind Traefik with HTTPS (`hearthside.example.com`).
-2. Accounts and invites: email and Google sign-in, households with child profiles under a parent account (D9).
-3. Puzzle bank service: Go engine generates and grades puzzles on a schedule; app tops up local bank when online.
-4. Daily puzzle service: one puzzle per day and difficulty, cached by the app for offline play.
+1. Run 1: Go API skeleton (`cmd/server`, `internal/config`, `internal/db`, `internal/httpapi`), pure-Go SQLite + embedded migrations, `GET /api/v1/healthz`, Workbox `/api` denylist + Vite dev proxy, `Dockerfile.api`, and Docker Compose + Traefik `/api` routing (D25–D26).
+2. Run 2: Household accounts, invite CLI/tokens, Email + Password (Argon2id), generic OIDC Discovery + PKCE, session cookies, and child profile management (D9, D27).
+3. Run 3: Server puzzle bank service + scheduled Go engine generation/grading and PWA online bank replenishment.
+4. Run 4: Deterministic Daily Puzzle service (`(YYYY-MM-DD, difficulty, engineVersion)` parity per D28), client sign-in + non-destructive local profile linking UI (D29), and deployment ops runbook.
 
-Exit: signed-in family members receive fresh puzzles and the daily puzzle from the home server, and offline play still works with no network.
+Exit: signed-in family members receive fresh puzzles and the daily puzzle from the home server, local profiles link without data loss, and offline play still works with no network (Section 15).
 
 ### Phase 5: Cloud save and stats sync
 
@@ -463,6 +473,48 @@ Done when: family playtest feedback is incorporated, all CI checks pass, and `v1
 - [x] `@axe-core/playwright` WCAG 2.1 AA audit across all 4 theme×mode variants, keyboard focus trapping/restoration, dynamic `<meta name="theme-color">`, chunk splitting, and offline PWA cold-start hardening pass (Run 2).
 - [x] Release docs (`plan.md` v1.0, `CHANGELOG.md`, device matrix), `assets/manifest.json` provenance audit, `1.0.0` versioning, and full Go/WASM/Web/E2E release verification gate complete (Run 3).
 
-## 15. Next step
+## 15. Phase 4 in detail (Backend foundation on the home server)
 
-Start **Phase 4: Backend foundation on the home server** (Go API skeleton, SQLite storage & migrations, Docker Compose behind Traefik HTTPS at `hearthside.example.com`, household invite accounts, and scheduled puzzle/daily services while keeping offline v1.0 play 100% self-contained).
+Phase 4 adds an optional, private Go API and SQLite store behind Traefik on the Ubuntu home server while keeping the `v1.0.0` offline PWA 100% functional without network access or sign-in.
+
+### 15.1 Run 1: Go API skeleton, SQLite, health check, and Docker/Traefik routing
+
+1. Implement `services/api/internal/config` (env-backed server, DB, cookie, log-level, and optional generic OIDC configuration), `internal/db` (pure-Go `modernc.org/sqlite`, WAL mode, `foreign_keys=ON`, `busy_timeout=5000`, `MaxOpenConns(1)`, embedded `0001_init.sql` migrations), `internal/httpapi` (request IDs, PII-free `log/slog` JSON access logging, panic recovery, `GET /api/v1/healthz`), and `cmd/server` (`-healthcheck` + graceful shutdown).
+2. Update `apps/web/vite.config.ts` with `workbox.navigateFallbackDenylist: [/^\/api\//]` and `/api` dev proxy (`http://127.0.0.1:8080`).
+3. Add `deploy/Dockerfile.api` and update `deploy/docker-compose.yml` + `deploy/.env.example` with `hearthside-api`, persistent `hearthside_data:/data`, and Traefik `/api` priority routing.
+
+Done when: `GET /api/v1/healthz` verifies DB ping + `engine/sudoku` version, Workbox `dist/sw.js` excludes `/api/`, and all Go (`-race`, `golangci-lint`, WASM build) and Web checks pass.
+
+### 15.2 Run 2: Household accounts, invites, Email + Argon2id, and generic OIDC
+
+1. Extend SQLite schema with households, adult users, invite tokens, opaque hashed sessions, OIDC identities, and child profiles (no child email/password).
+2. Implement invite-only Email + Password (Argon2id) signup/login, generic OIDC Discovery + Authorization Code + PKCE login/callback, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`, CSRF origin validation on mutating routes, and admin invite bootstrap CLI.
+3. Add CRUD endpoints for household child profiles under parent authorization.
+
+Done when: an invited adult can register/sign in with Email+Password or a mocked OIDC Discovery IdP in Go integration tests, manage child profiles, and unauthorized/cross-household access is rejected.
+
+### 15.3 Run 3: Server puzzle bank service and client top-up
+
+1. Store pre-generated `engine/sudoku` puzzles (`seed`, `engine_version`, `difficulty`, `techniques_required`, `clues`, `solution`) in SQLite and run an automated background replenishment worker keeping configurable per-tier buffers stocked.
+2. Expose authenticated endpoints to fetch batch/next puzzles per difficulty tier and wire `apps/web` / `games/sudoku` to top up local IndexedDB puzzle banks asynchronously when online, falling back seamlessly to `starter-bank.json` and WASM generation when offline.
+
+Done when: server-served puzzles replenish online client banks while offline clients continue generating and serving puzzles identically.
+
+### 15.4 Run 4: Daily puzzle service, PWA sign-in/profile linking UI, and ops runbook
+
+1. Expose `GET /api/v1/daily` backed by deterministic `(YYYY-MM-DD, difficulty, engineVersion)` generation (D28) and wire online Daily Puzzle fetch + local IndexedDB caching.
+2. Add lightweight, optional Account & Household Sign-In UI in the PWA Shell/Settings that links existing local profiles non-destructively (D29), preserving guest/offline play at all times.
+3. Document SQLite backup/restore verification and homelab deployment steps in `docs/`.
+
+Done when: online and offline devices play identical Daily Puzzles, local profiles link without losing saves/stats, and backup/restore + full CI/E2E gates pass.
+
+### 15.5 Phase 4 exit checklist
+
+- [x] Run 1: Go API skeleton (`cmd/server`, `config`, `db`, `httpapi`), `GET /api/v1/healthz`, Workbox `/api` denylist, `Dockerfile.api`, and Compose/Traefik routing verified.
+- [ ] Run 2: Invite-only Email + Argon2id, generic OIDC Discovery + PKCE, session cookies, and household child profiles implemented and tested.
+- [ ] Run 3: Scheduled SQLite puzzle bank generation and online PWA bank top-up implemented and tested.
+- [ ] Run 4: Daily puzzle endpoint (D28 parity), non-destructive local profile linking UI (D29), and SQLite backup/restore runbook verified.
+
+## 16. Next step
+
+Continue **Phase 4, Run 2** (Household accounts, invite-only Email + Argon2id auth, generic OIDC Discovery + PKCE, session cookies, and child profile management).

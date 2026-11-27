@@ -9,7 +9,7 @@ Hearthside is a private, family-focused game platform that eventually adds accou
 
 ## Decision
 
-The backend is private and invite-only for the family, hosted on the Ubuntu home server and eventually reachable from the internet. Email addresses are acceptable, and Google sign-in is an option. The household and child account model is defined in [D9](./0009-child-accounts.md).
+The backend is private and invite-only for the family, hosted on the Ubuntu home server and eventually reachable from the internet. Adult accounts support Email + Password (Argon2id) and generic OpenID Connect (Discovery + PKCE for Google or any self-hosted IdP). The household, child account, and auth model is settled in [D9](./0009-child-accounts.md) and [D27](./0027-invite-email-and-oidc-auth.md).
 
 ## Consequences
 
