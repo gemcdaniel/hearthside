@@ -9,6 +9,13 @@ import (
 	"github.com/gemcdaniel/hearthside/engine/sudoku"
 )
 
+func nextStepJS(_ js.Value, args []js.Value) any {
+	if len(args) < 1 {
+		return `{"ok":false,"error":"missing boardJson argument"}`
+	}
+	return sudoku.NextStepJSON(args[0].String())
+}
+
 func nextHintJS(_ js.Value, args []js.Value) any {
 	if len(args) < 1 {
 		return `{"ok":false,"error":"missing boardJson argument"}`
@@ -29,6 +36,7 @@ func versionJS(_ js.Value, _ []js.Value) any {
 
 func main() {
 	api := js.Global().Get("Object").New()
+	api.Set("nextStep", js.FuncOf(nextStepJS))
 	api.Set("nextHint", js.FuncOf(nextHintJS))
 	api.Set("countSolutions", js.FuncOf(countSolutionsJS))
 	api.Set("version", js.FuncOf(versionJS))

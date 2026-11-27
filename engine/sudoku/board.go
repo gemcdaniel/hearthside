@@ -3,6 +3,8 @@ package sudoku
 import (
 	"errors"
 	"fmt"
+	"math/bits"
+	"slices"
 	"strings"
 )
 
@@ -22,11 +24,29 @@ const (
 var (
 	// ErrInvalidBoard indicates a board with out-of-range digits or conflicting placements.
 	ErrInvalidBoard = errors.New("sudoku: invalid board")
-	// ErrInvalidInput indicates malformed input payload or board length.
+	// ErrInvalidInput indicates malformed input payload, cell index, digit, or string length.
 	ErrInvalidInput = errors.New("sudoku: invalid input")
 )
 
-// Peers holds the 20 unique peer indices (same row, column, or 3x3 box) for each cell.
+// RowOf maps each cell index 0..80 to its row index 0..8.
+var RowOf [BoardSize]int
+
+// ColOf maps each cell index 0..80 to its column index 0..8.
+var ColOf [BoardSize]int
+
+// BoxOf maps each cell index 0..80 to its 3x3 box index 0..8.
+var BoxOf [BoardSize]int
+
+// Rows holds the 9 cell indices for each row 0..8.
+var Rows [GridSize][GridSize]int
+
+// Cols holds the 9 cell indices for each column 0..8.
+var Cols [GridSize][GridSize]int
+
+// Boxes holds the 9 cell indices for each 3x3 box 0..8.
+var Boxes [GridSize][GridSize]int
+
+// Peers holds the 20 unique peer indices (same row, column, or 3x3 box) for each cell, sorted ascending.
 var Peers [BoardSize][20]int
 
 // Units holds the 9 cell indices for each of the 27 units (rows 0-8, cols 9-17, boxes 18-26).
@@ -41,17 +61,27 @@ func init() {
 		UnitNames[GridSize+r] = fmt.Sprintf("column %d", r+1)
 		UnitNames[2*GridSize+r] = fmt.Sprintf("box %d", r+1)
 		for c := range GridSize {
-			Units[r][c] = r*GridSize + c
-			Units[GridSize+c][r] = r*GridSize + c
+			idx := r*GridSize + c
 			boxIdx := (r/BoxSize)*BoxSize + (c / BoxSize)
 			boxPos := (r%BoxSize)*BoxSize + (c % BoxSize)
-			Units[2*GridSize+boxIdx][boxPos] = r*GridSize + c
+
+			RowOf[idx] = r
+			ColOf[idx] = c
+			BoxOf[idx] = boxIdx
+
+			Rows[r][c] = idx
+			Cols[c][r] = idx
+			Boxes[boxIdx][boxPos] = idx
+
+			Units[r][c] = idx
+			Units[GridSize+c][r] = idx
+			Units[2*GridSize+boxIdx][boxPos] = idx
 		}
 	}
 
 	for idx := range BoardSize {
-		r := idx / GridSize
-		c := idx % GridSize
+		r := RowOf[idx]
+		c := ColOf[idx]
 		boxRow := (r / BoxSize) * BoxSize
 		boxCol := (c / BoxSize) * BoxSize
 
@@ -85,6 +115,7 @@ func init() {
 				}
 			}
 		}
+		slices.Sort(Peers[idx][:])
 	}
 }
 
@@ -94,6 +125,45 @@ func DigitMask(d uint8) uint16 {
 		return 0
 	}
 	return uint16(1) << d
+}
+
+// CandidateCount returns the number of active candidate digits in mask (1..9).
+func CandidateCount(mask uint16) int {
+	return bits.OnesCount16(mask & AllCandidates)
+}
+
+// FirstCandidate returns the lowest active candidate digit (1..9) in mask, or 0 if empty.
+func FirstCandidate(mask uint16) uint8 {
+	m := mask & AllCandidates
+	if m == 0 {
+		return 0
+	}
+	return uint8(bits.TrailingZeros16(m))
+}
+
+// CandidateDigits returns the active candidate digits in ascending order.
+func CandidateDigits(mask uint16) []uint8 {
+	m := mask & AllCandidates
+	digits := make([]uint8, 0, bits.OnesCount16(m))
+	for m != 0 {
+		lsb := m & -m
+		m &^= lsb
+		digits = append(digits, uint8(bits.TrailingZeros16(lsb)))
+	}
+	return digits
+}
+
+// HasCandidate reports whether digit d (1..9) is enabled in mask.
+func HasCandidate(mask uint16, d uint8) bool {
+	return (mask & DigitMask(d)) != 0
+}
+
+// ArePeers reports whether two distinct cell indices share a row, column, or 3x3 box.
+func ArePeers(a, b int) bool {
+	if a < 0 || a >= BoardSize || b < 0 || b >= BoardSize || a == b {
+		return false
+	}
+	return RowOf[a] == RowOf[b] || ColOf[a] == ColOf[b] || BoxOf[a] == BoxOf[b]
 }
 
 // Cell represents one square on a Sudoku board.
@@ -121,8 +191,8 @@ func NewBoardFromDigits(digits [BoardSize]uint8) (Board, error) {
 			Given: d != 0,
 		}
 	}
-	if b.HasConflict() {
-		return Board{}, fmt.Errorf("%w: conflicting peer digits", ErrInvalidBoard)
+	if err := b.Validate(); err != nil {
+		return Board{}, err
 	}
 	b.RecomputeCandidates()
 	return b, nil
@@ -150,40 +220,56 @@ func ParseBoardString(s string) (Board, error) {
 	return NewBoardFromDigits(digits)
 }
 
-// RecomputeCandidates refreshes the 9-bit candidate mask for every cell from current placements.
-func (b *Board) RecomputeCandidates() {
+// String serializes the board into its canonical 81-character representation using '0' for empty cells.
+func (b Board) String() string {
+	var buf [BoardSize]byte
 	for i := range BoardSize {
-		if b.Cells[i].Value != 0 {
-			b.Cells[i].Candidates = 0
-			continue
+		v := b.Cells[i].Value
+		if v >= 1 && v <= GridSize {
+			buf[i] = '0' + v
+		} else {
+			buf[i] = '0'
 		}
-		mask := AllCandidates
-		for _, peer := range Peers[i] {
-			if pv := b.Cells[peer].Value; pv != 0 {
-				mask &^= DigitMask(pv)
-			}
-		}
-		b.Cells[i].Candidates = mask
 	}
+	return string(buf[:])
 }
 
-// HasConflict reports whether any non-zero cell shares its digit with a peer or holds an invalid digit.
-func (b *Board) HasConflict() bool {
+// DotString serializes the board into an 81-character string using '.' for empty cells.
+func (b Board) DotString() string {
+	var buf [BoardSize]byte
+	for i := range BoardSize {
+		v := b.Cells[i].Value
+		if v >= 1 && v <= GridSize {
+			buf[i] = '0' + v
+		} else {
+			buf[i] = '.'
+		}
+	}
+	return string(buf[:])
+}
+
+// Validate checks that all digits are in 0..9 and no two peers hold the same non-zero digit.
+func (b *Board) Validate() error {
 	for i := range BoardSize {
 		v := b.Cells[i].Value
 		if v == 0 {
 			continue
 		}
 		if v > GridSize {
-			return true
+			return fmt.Errorf("%w: digit %d out of range at cell %d", ErrInvalidBoard, v, i)
 		}
 		for _, peer := range Peers[i] {
 			if b.Cells[peer].Value == v {
-				return true
+				return fmt.Errorf("%w: conflicting digit %d at cells %d and %d", ErrInvalidBoard, v, i, peer)
 			}
 		}
 	}
-	return false
+	return nil
+}
+
+// HasConflict reports whether any non-zero cell shares its digit with a peer or holds an invalid digit.
+func (b *Board) HasConflict() bool {
+	return b.Validate() != nil
 }
 
 // IsSolved reports whether all 81 cells are filled without conflicts.
@@ -206,4 +292,78 @@ func (b *Board) Digits() [BoardSize]uint8 {
 		out[i] = b.Cells[i].Value
 	}
 	return out
+}
+
+// RecomputeCandidates refreshes the 9-bit candidate mask for every cell from current placements.
+func (b *Board) RecomputeCandidates() {
+	for i := range BoardSize {
+		if b.Cells[i].Value != 0 {
+			b.Cells[i].Candidates = 0
+			continue
+		}
+		mask := AllCandidates
+		for _, peer := range Peers[i] {
+			if pv := b.Cells[peer].Value; pv != 0 {
+				mask &^= DigitMask(pv)
+			}
+		}
+		b.Cells[i].Candidates = mask
+	}
+}
+
+// stripPeerCandidates removes candidate bits invalidated by placed peers without restoring prior eliminations.
+func (b *Board) stripPeerCandidates() {
+	for i := range BoardSize {
+		if b.Cells[i].Value != 0 {
+			b.Cells[i].Candidates = 0
+			continue
+		}
+		for _, peer := range Peers[i] {
+			if pv := b.Cells[peer].Value; pv != 0 {
+				b.Cells[i].Candidates &^= DigitMask(pv)
+			}
+		}
+	}
+}
+
+// Place writes digit 1..9 into an empty cell and clears that digit from all peer candidate masks.
+func (b *Board) Place(cell int, digit uint8) error {
+	if cell < 0 || cell >= BoardSize {
+		return fmt.Errorf("%w: cell index %d out of range", ErrInvalidInput, cell)
+	}
+	if digit < 1 || digit > GridSize {
+		return fmt.Errorf("%w: digit %d out of range", ErrInvalidInput, digit)
+	}
+	if b.Cells[cell].Value != 0 {
+		return fmt.Errorf("%w: cell %d is already filled", ErrInvalidBoard, cell)
+	}
+	for _, peer := range Peers[cell] {
+		if b.Cells[peer].Value == digit {
+			return fmt.Errorf("%w: placing %d at cell %d conflicts with peer %d", ErrInvalidBoard, digit, cell, peer)
+		}
+	}
+
+	b.Cells[cell].Value = digit
+	b.Cells[cell].Candidates = 0
+	mask := DigitMask(digit)
+	for _, peer := range Peers[cell] {
+		b.Cells[peer].Candidates &^= mask
+	}
+	return nil
+}
+
+// Eliminate removes digit (1..9) from cell's candidate mask and reports whether it was present.
+func (b *Board) Eliminate(cell int, digit uint8) bool {
+	if cell < 0 || cell >= BoardSize || digit < 1 || digit > GridSize {
+		return false
+	}
+	if b.Cells[cell].Value != 0 {
+		return false
+	}
+	mask := DigitMask(digit)
+	if (b.Cells[cell].Candidates & mask) == 0 {
+		return false
+	}
+	b.Cells[cell].Candidates &^= mask
+	return true
 }

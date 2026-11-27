@@ -10,11 +10,29 @@ type boardRequest struct {
 	Puzzle string  `json:"puzzle"`
 }
 
+// HintSummary preserves the Phase 0 Spike A hint response shape while delegating to NextStep.
+type HintSummary struct {
+	Found        bool          `json:"found"`
+	Technique    Technique     `json:"technique,omitempty"`
+	Cell         int           `json:"cell"`
+	Digit        uint8         `json:"digit"`
+	Eliminations []Elimination `json:"eliminations"`
+}
+
 type nextHintResponse struct {
-	OK            bool      `json:"ok"`
-	EngineVersion string    `json:"engineVersion"`
-	Hint          *HintStep `json:"hint,omitempty"`
-	Error         string    `json:"error,omitempty"`
+	OK            bool         `json:"ok"`
+	EngineVersion string       `json:"engineVersion"`
+	Hint          *HintSummary `json:"hint,omitempty"`
+	Step          *Step        `json:"step,omitempty"`
+	Error         string       `json:"error,omitempty"`
+}
+
+type nextStepResponse struct {
+	OK            bool   `json:"ok"`
+	EngineVersion string `json:"engineVersion"`
+	Found         bool   `json:"found"`
+	Step          *Step  `json:"step,omitempty"`
+	Error         string `json:"error,omitempty"`
 }
 
 type countSolutionsResponse struct {
@@ -52,6 +70,39 @@ func marshalString(v any) string {
 	return string(raw)
 }
 
+// NextStepJSON evaluates the next logical step for a JSON board payload and returns a JSON response.
+func NextStepJSON(boardJSON string) string {
+	b, err := parseBoardRequest(boardJSON)
+	if err != nil {
+		return marshalString(nextStepResponse{
+			OK:            false,
+			EngineVersion: EngineVersion,
+			Error:         err.Error(),
+		})
+	}
+	step, found, err := NextStep(b)
+	if err != nil {
+		return marshalString(nextStepResponse{
+			OK:            false,
+			EngineVersion: EngineVersion,
+			Error:         err.Error(),
+		})
+	}
+	if !found {
+		return marshalString(nextStepResponse{
+			OK:            true,
+			EngineVersion: EngineVersion,
+			Found:         false,
+		})
+	}
+	return marshalString(nextStepResponse{
+		OK:            true,
+		EngineVersion: EngineVersion,
+		Found:         true,
+		Step:          &step,
+	})
+}
+
 // NextHintJSON evaluates the next logical hint for a JSON board payload and returns a JSON response.
 func NextHintJSON(boardJSON string) string {
 	b, err := parseBoardRequest(boardJSON)
@@ -62,7 +113,7 @@ func NextHintJSON(boardJSON string) string {
 			Error:         err.Error(),
 		})
 	}
-	hint, err := NextHint(b)
+	step, found, err := NextStep(b)
 	if err != nil {
 		return marshalString(nextHintResponse{
 			OK:            false,
@@ -70,10 +121,38 @@ func NextHintJSON(boardJSON string) string {
 			Error:         err.Error(),
 		})
 	}
+	if !found {
+		return marshalString(nextHintResponse{
+			OK:            true,
+			EngineVersion: EngineVersion,
+			Hint: &HintSummary{
+				Found:        false,
+				Cell:         -1,
+				Eliminations: []Elimination{},
+			},
+		})
+	}
+
+	cell := -1
+	digit := uint8(0)
+	if len(step.Placements) > 0 {
+		cell = step.Placements[0].Cell
+		digit = step.Placements[0].Digit
+	} else if len(step.DrivingCells) > 0 {
+		cell = step.DrivingCells[0]
+	}
+
 	return marshalString(nextHintResponse{
 		OK:            true,
 		EngineVersion: EngineVersion,
-		Hint:          &hint,
+		Hint: &HintSummary{
+			Found:        true,
+			Technique:    step.Technique,
+			Cell:         cell,
+			Digit:        digit,
+			Eliminations: step.Eliminations,
+		},
+		Step: &step,
 	})
 }
 
@@ -87,7 +166,7 @@ func CountSolutionsJSON(boardJSON string) string {
 			Error:         err.Error(),
 		})
 	}
-	count, err := CountSolutions(b, 2)
+	count, err := b.CountSolutions(2)
 	if err != nil {
 		return marshalString(countSolutionsResponse{
 			OK:            false,

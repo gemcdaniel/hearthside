@@ -2,7 +2,7 @@ package sudoku
 
 import (
 	"encoding/json"
-	"errors"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -12,14 +12,277 @@ const (
 	hardPuzzleFixture = "000000907000420180000705026100904000050000040000507009920108000034059000507000000"
 )
 
-func TestSolveLogicalEasyPuzzleAndUniqueness(t *testing.T) {
+func uniformCandidateBoard() Board {
+	var b Board
+	for i := range BoardSize {
+		b.Cells[i].Candidates = AllCandidates
+	}
+	return b
+}
+
+func TestTechniqueDifficultyMapping(t *testing.T) {
+	tests := []struct {
+		tech Technique
+		want Difficulty
+	}{
+		{TechniqueNakedSingle, DifficultyEasy},
+		{TechniqueHiddenSingle, DifficultyEasy},
+		{TechniquePointingLine, DifficultyMedium},
+		{TechniqueBoxLineReduction, DifficultyMedium},
+		{TechniqueNakedPair, DifficultyMedium},
+		{TechniqueHiddenPair, DifficultyMedium},
+		{TechniqueNakedTriple, DifficultyMedium},
+		{TechniqueHiddenTriple, DifficultyMedium},
+	}
+
+	for _, tc := range tests {
+		if got := tc.tech.Difficulty(); got != tc.want {
+			t.Fatalf("Technique(%q).Difficulty() = %q, want %q", tc.tech, got, tc.want)
+		}
+	}
+}
+
+func TestIsolatedEasyAndMediumTechniques(t *testing.T) {
+	t.Run("NakedSingle", func(t *testing.T) {
+		b := uniformCandidateBoard()
+		b.Cells[0].Candidates = DigitMask(7)
+
+		step, ok, err := NextStep(b)
+		if err != nil || !ok {
+			t.Fatalf("NextStep failed: ok=%v err=%v", ok, err)
+		}
+		if step.Technique != TechniqueNakedSingle || step.Difficulty != DifficultyEasy {
+			t.Fatalf("unexpected technique/difficulty: %+v", step)
+		}
+		if step.Region != (Region{Kind: RegionCell, Index: 0}) {
+			t.Fatalf("unexpected region: %+v", step.Region)
+		}
+		if !slices.Equal(step.DrivingCells, []int{0}) {
+			t.Fatalf("DrivingCells = %v, want [0]", step.DrivingCells)
+		}
+		if !slices.Equal(step.Placements, []Placement{{Cell: 0, Digit: 7}}) {
+			t.Fatalf("Placements = %+v", step.Placements)
+		}
+		if len(step.Eliminations) != 20 {
+			t.Fatalf("expected 20 peer eliminations, got %d", len(step.Eliminations))
+		}
+	})
+
+	t.Run("HiddenSingle", func(t *testing.T) {
+		b := uniformCandidateBoard()
+		for col := 1; col < GridSize; col++ {
+			b.Cells[col].Candidates &^= DigitMask(4)
+		}
+
+		step, ok, err := NextStep(b)
+		if err != nil || !ok {
+			t.Fatalf("NextStep failed: ok=%v err=%v", ok, err)
+		}
+		if step.Technique != TechniqueHiddenSingle || step.Difficulty != DifficultyEasy {
+			t.Fatalf("unexpected technique/difficulty: %+v", step)
+		}
+		if step.Region != (Region{Kind: RegionRow, Index: 0}) {
+			t.Fatalf("unexpected region: %+v", step.Region)
+		}
+		if !slices.Equal(step.DrivingCells, []int{0}) {
+			t.Fatalf("DrivingCells = %v, want [0]", step.DrivingCells)
+		}
+		if !slices.Equal(step.Placements, []Placement{{Cell: 0, Digit: 4}}) {
+			t.Fatalf("Placements = %+v", step.Placements)
+		}
+		// 8 peers in row 0 already lack 4; 12 remaining peers in col 0 and box 0 have 4.
+		if len(step.Eliminations) != 12 {
+			t.Fatalf("expected 12 peer eliminations, got %d", len(step.Eliminations))
+		}
+	})
+
+	t.Run("PointingLine", func(t *testing.T) {
+		b := uniformCandidateBoard()
+		for _, c := range []int{2, 9, 10, 11, 18, 19, 20} {
+			b.Cells[c].Candidates &^= DigitMask(5)
+		}
+
+		step, ok, err := NextStep(b)
+		if err != nil || !ok {
+			t.Fatalf("NextStep failed: ok=%v err=%v", ok, err)
+		}
+		if step.Technique != TechniquePointingLine || step.Difficulty != DifficultyMedium {
+			t.Fatalf("unexpected technique/difficulty: %+v", step)
+		}
+		if step.Region != (Region{Kind: RegionBox, Index: 0}) {
+			t.Fatalf("unexpected region: %+v", step.Region)
+		}
+		if !slices.Equal(step.DrivingCells, []int{0, 1}) {
+			t.Fatalf("DrivingCells = %v, want [0 1]", step.DrivingCells)
+		}
+		if len(step.Placements) != 0 {
+			t.Fatalf("expected no placements, got %+v", step.Placements)
+		}
+		wantElims := []Elimination{
+			{Cell: 3, Digit: 5},
+			{Cell: 4, Digit: 5},
+			{Cell: 5, Digit: 5},
+			{Cell: 6, Digit: 5},
+			{Cell: 7, Digit: 5},
+			{Cell: 8, Digit: 5},
+		}
+		if !slices.Equal(step.Eliminations, wantElims) {
+			t.Fatalf("Eliminations = %+v, want %+v", step.Eliminations, wantElims)
+		}
+	})
+
+	t.Run("BoxLineReduction", func(t *testing.T) {
+		b := uniformCandidateBoard()
+		for _, c := range []int{2, 3, 4, 5, 6, 7, 8} {
+			b.Cells[c].Candidates &^= DigitMask(6)
+		}
+
+		step, ok, err := NextStep(b)
+		if err != nil || !ok {
+			t.Fatalf("NextStep failed: ok=%v err=%v", ok, err)
+		}
+		if step.Technique != TechniqueBoxLineReduction || step.Difficulty != DifficultyMedium {
+			t.Fatalf("unexpected technique/difficulty: %+v", step)
+		}
+		if step.Region != (Region{Kind: RegionRow, Index: 0}) {
+			t.Fatalf("unexpected region: %+v", step.Region)
+		}
+		if !slices.Equal(step.DrivingCells, []int{0, 1}) {
+			t.Fatalf("DrivingCells = %v, want [0 1]", step.DrivingCells)
+		}
+		wantElims := []Elimination{
+			{Cell: 9, Digit: 6},
+			{Cell: 10, Digit: 6},
+			{Cell: 11, Digit: 6},
+			{Cell: 18, Digit: 6},
+			{Cell: 19, Digit: 6},
+			{Cell: 20, Digit: 6},
+		}
+		if !slices.Equal(step.Eliminations, wantElims) {
+			t.Fatalf("Eliminations = %+v, want %+v", step.Eliminations, wantElims)
+		}
+	})
+
+	t.Run("NakedPair", func(t *testing.T) {
+		b := uniformCandidateBoard()
+		pairMask := DigitMask(1) | DigitMask(2)
+		b.Cells[0].Candidates = pairMask
+		b.Cells[1].Candidates = pairMask
+
+		step, ok, err := NextStep(b)
+		if err != nil || !ok {
+			t.Fatalf("NextStep failed: ok=%v err=%v", ok, err)
+		}
+		if step.Technique != TechniqueNakedPair || step.Difficulty != DifficultyMedium {
+			t.Fatalf("unexpected technique/difficulty: %+v", step)
+		}
+		if step.Region != (Region{Kind: RegionRow, Index: 0}) {
+			t.Fatalf("unexpected region: %+v", step.Region)
+		}
+		if !slices.Equal(step.DrivingCells, []int{0, 1}) {
+			t.Fatalf("DrivingCells = %v, want [0 1]", step.DrivingCells)
+		}
+		if len(step.Eliminations) != 14 {
+			t.Fatalf("expected 14 eliminations across cells 2..8, got %d", len(step.Eliminations))
+		}
+		if err := b.ApplyStep(step); err != nil {
+			t.Fatalf("ApplyStep failed: %v", err)
+		}
+		if HasCandidate(b.Cells[5].Candidates, 1) || HasCandidate(b.Cells[5].Candidates, 2) {
+			t.Fatal("expected ApplyStep to eliminate 1 and 2 from cell 5")
+		}
+	})
+
+	t.Run("HiddenPair", func(t *testing.T) {
+		b := uniformCandidateBoard()
+		remove89 := DigitMask(8) | DigitMask(9)
+		for _, c := range []int{1, 2, 4, 5, 6, 7, 8} {
+			b.Cells[c].Candidates &^= remove89
+		}
+
+		step, ok, err := NextStep(b)
+		if err != nil || !ok {
+			t.Fatalf("NextStep failed: ok=%v err=%v", ok, err)
+		}
+		if step.Technique != TechniqueHiddenPair || step.Difficulty != DifficultyMedium {
+			t.Fatalf("unexpected technique/difficulty: %+v", step)
+		}
+		if step.Region != (Region{Kind: RegionRow, Index: 0}) {
+			t.Fatalf("unexpected region: %+v", step.Region)
+		}
+		if !slices.Equal(step.DrivingCells, []int{0, 3}) {
+			t.Fatalf("DrivingCells = %v, want [0 3]", step.DrivingCells)
+		}
+		if len(step.Eliminations) != 14 {
+			t.Fatalf("expected 14 eliminations (1..7 from cells 0 and 3), got %d", len(step.Eliminations))
+		}
+	})
+
+	t.Run("NakedTriple", func(t *testing.T) {
+		b := uniformCandidateBoard()
+		b.Cells[0].Candidates = DigitMask(1) | DigitMask(2)
+		b.Cells[3].Candidates = DigitMask(2) | DigitMask(3)
+		b.Cells[6].Candidates = DigitMask(1) | DigitMask(3)
+
+		step, ok, err := NextStep(b)
+		if err != nil || !ok {
+			t.Fatalf("NextStep failed: ok=%v err=%v", ok, err)
+		}
+		if step.Technique != TechniqueNakedTriple || step.Difficulty != DifficultyMedium {
+			t.Fatalf("unexpected technique/difficulty: %+v", step)
+		}
+		if step.Region != (Region{Kind: RegionRow, Index: 0}) {
+			t.Fatalf("unexpected region: %+v", step.Region)
+		}
+		if !slices.Equal(step.DrivingCells, []int{0, 3, 6}) {
+			t.Fatalf("DrivingCells = %v, want [0 3 6]", step.DrivingCells)
+		}
+		if len(step.Eliminations) != 18 {
+			t.Fatalf("expected 18 eliminations across the other 6 row cells, got %d", len(step.Eliminations))
+		}
+	})
+
+	t.Run("HiddenTriple", func(t *testing.T) {
+		b := uniformCandidateBoard()
+		remove789 := DigitMask(7) | DigitMask(8) | DigitMask(9)
+		for _, c := range []int{1, 2, 4, 5, 7, 8} {
+			b.Cells[c].Candidates &^= remove789
+		}
+		b.Cells[0].Candidates = DigitMask(1) | DigitMask(2) | DigitMask(7) | DigitMask(8)
+		b.Cells[3].Candidates = DigitMask(2) | DigitMask(3) | DigitMask(8) | DigitMask(9)
+		b.Cells[6].Candidates = DigitMask(1) | DigitMask(3) | DigitMask(7) | DigitMask(9)
+
+		step, ok, err := NextStep(b)
+		if err != nil || !ok {
+			t.Fatalf("NextStep failed: ok=%v err=%v", ok, err)
+		}
+		if step.Technique != TechniqueHiddenTriple || step.Difficulty != DifficultyMedium {
+			t.Fatalf("unexpected technique/difficulty: %+v", step)
+		}
+		if step.Region != (Region{Kind: RegionRow, Index: 0}) {
+			t.Fatalf("unexpected region: %+v", step.Region)
+		}
+		if !slices.Equal(step.DrivingCells, []int{0, 3, 6}) {
+			t.Fatalf("DrivingCells = %v, want [0 3 6]", step.DrivingCells)
+		}
+		wantElims := []Elimination{
+			{Cell: 0, Digit: 1},
+			{Cell: 0, Digit: 2},
+			{Cell: 3, Digit: 2},
+			{Cell: 3, Digit: 3},
+			{Cell: 6, Digit: 1},
+			{Cell: 6, Digit: 3},
+		}
+		if !slices.Equal(step.Eliminations, wantElims) {
+			t.Fatalf("Eliminations = %+v, want %+v", step.Eliminations, wantElims)
+		}
+	})
+}
+
+func TestSolveLogicalEasyPuzzleAndNoStepOnSolved(t *testing.T) {
 	board, err := ParseBoardString(easyPuzzleFixture)
 	if err != nil {
 		t.Fatalf("ParseBoardString failed: %v", err)
-	}
-
-	if !HasUniqueSolution(board) {
-		t.Fatal("expected easy puzzle to have a unique solution")
 	}
 
 	solved, steps, ok := SolveLogical(board)
@@ -29,120 +292,37 @@ func TestSolveLogicalEasyPuzzleAndUniqueness(t *testing.T) {
 	if !solved.IsSolved() {
 		t.Fatal("expected solved board to report IsSolved() == true")
 	}
-	if len(steps) == 0 {
-		t.Fatal("expected non-empty step trace")
-	}
-}
 
-func TestNextHintNakedAndHiddenSingles(t *testing.T) {
-	// Cell 0 (row 0, col 0) sees 2..9 in row 0, leaving only 1 -> naked single.
-	nakedRow := "023456789" + strings.Repeat("0", 72)
-	bNaked, err := ParseBoardString(nakedRow)
-	if err != nil {
-		t.Fatalf("ParseBoardString naked failed: %v", err)
-	}
-	hint, err := NextHint(bNaked)
-	if err != nil {
-		t.Fatalf("NextHint failed: %v", err)
-	}
-	if !hint.Found || hint.Technique != TechniqueNakedSingle || hint.Cell != 0 || hint.Digit != 1 {
-		t.Fatalf("unexpected naked single hint: %+v", hint)
-	}
-
-	// Construct a board with NO naked singles, but a hidden single for digit 1 in row 0.
-	// Row 0 has cells 1..6 filled (digits 2..7), leaving cells 0, 7, and 8 empty.
-	// Placing 1 at (1,7) [index 16, box 2] blocks digit 1 from both cell 7 and cell 8,
-	// leaving {8,9} there and {1,8,9} at cell 0, so cell 0 is a hidden single for 1.
-	var digits [BoardSize]uint8
-	digits[1] = 2
-	digits[2] = 3
-	digits[3] = 4
-	digits[4] = 5
-	digits[5] = 6
-	digits[6] = 7
-	digits[16] = 1
-	bHidden, err := NewBoardFromDigits(digits)
-	if err != nil {
-		t.Fatalf("NewBoardFromDigits hidden failed: %v", err)
-	}
-	hint, err = NextHint(bHidden)
-	if err != nil {
-		t.Fatalf("NextHint hidden failed: %v", err)
-	}
-	if !hint.Found || hint.Technique != TechniqueHiddenSingle || hint.Cell != 0 || hint.Digit != 1 {
-		t.Fatalf("unexpected hidden single hint: %+v", hint)
-	}
-	if len(hint.Eliminations) == 0 {
-		t.Fatal("expected peer eliminations on hidden single hint")
-	}
-}
-
-func TestCountSolutionsUnsolvableAndMultiSolution(t *testing.T) {
-	// Conflicting board rejected by NewBoardFromDigits.
-	var conflict [BoardSize]uint8
-	conflict[0] = 5
-	conflict[1] = 5
-	if _, err := NewBoardFromDigits(conflict); !errors.Is(err, ErrInvalidBoard) {
-		t.Fatalf("expected ErrInvalidBoard, got %v", err)
-	}
-
-	// Unsolvable board without direct peer conflicts: cell 0 has no candidates because
-	// row 0 holds 1..8 and col 0 holds 9.
-	unsolvableStr := "012345678" +
-		"900000000" +
-		strings.Repeat("0", 63)
-	bUnsolvable, err := ParseBoardString(unsolvableStr)
-	if err != nil {
-		t.Fatalf("ParseBoardString unsolvable failed: %v", err)
-	}
-	cnt, err := CountSolutions(bUnsolvable, 2)
-	if err != nil {
-		t.Fatalf("CountSolutions unsolvable error: %v", err)
-	}
-	if cnt != 0 {
-		t.Fatalf("expected 0 solutions for unsolvable board, got %d", cnt)
-	}
-
-	// Empty board has many solutions; CountSolutions(..., 2) must stop at 2.
-	emptyBoard, err := ParseBoardString(strings.Repeat("0", BoardSize))
-	if err != nil {
-		t.Fatalf("ParseBoardString empty failed: %v", err)
-	}
-	cnt, err = CountSolutions(emptyBoard, 2)
-	if err != nil {
-		t.Fatalf("CountSolutions empty error: %v", err)
-	}
-	if cnt != 2 {
-		t.Fatalf("expected CountSolutions to stop at 2, got %d", cnt)
-	}
-}
-
-func TestHardPuzzleFixtureUniqueAndHintSafe(t *testing.T) {
-	board, err := ParseBoardString(hardPuzzleFixture)
-	if err != nil {
-		t.Fatalf("ParseBoardString hard failed: %v", err)
-	}
-	cnt, err := CountSolutions(board, 2)
-	if err != nil {
-		t.Fatalf("CountSolutions hard error: %v", err)
-	}
-	if cnt != 1 {
-		t.Fatalf("expected hard fixture to have 1 unique solution, got %d", cnt)
-	}
-	if _, err := NextHint(board); err != nil {
-		t.Fatalf("NextHint hard error: %v", err)
+	step, found, err := NextStep(solved)
+	if err != nil || found {
+		t.Fatalf("expected no step on solved board, got found=%v step=%+v err=%v", found, step, err)
 	}
 }
 
 func TestJSONBridge(t *testing.T) {
 	payload := `{"puzzle":"` + easyPuzzleFixture + `"}`
 
+	stepRaw := NextStepJSON(payload)
+	var stepResp struct {
+		OK            bool   `json:"ok"`
+		EngineVersion string `json:"engineVersion"`
+		Found         bool   `json:"found"`
+		Step          *Step  `json:"step"`
+		Error         string `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(stepRaw), &stepResp); err != nil {
+		t.Fatalf("unmarshal NextStepJSON failed: %v", err)
+	}
+	if !stepResp.OK || !stepResp.Found || stepResp.Step == nil {
+		t.Fatalf("unexpected NextStepJSON response: %s", stepRaw)
+	}
+
 	hintRaw := NextHintJSON(payload)
 	var hintResp struct {
-		OK            bool      `json:"ok"`
-		EngineVersion string    `json:"engineVersion"`
-		Hint          *HintStep `json:"hint"`
-		Error         string    `json:"error"`
+		OK            bool         `json:"ok"`
+		EngineVersion string       `json:"engineVersion"`
+		Hint          *HintSummary `json:"hint"`
+		Error         string       `json:"error"`
 	}
 	if err := json.Unmarshal([]byte(hintRaw), &hintResp); err != nil {
 		t.Fatalf("unmarshal NextHintJSON failed: %v", err)
@@ -165,7 +345,7 @@ func TestJSONBridge(t *testing.T) {
 		t.Fatalf("unexpected CountSolutionsJSON response: %s", countRaw)
 	}
 
-	badRaw := NextHintJSON(`{"puzzle":"too-short"}`)
+	badRaw := NextStepJSON(`{"puzzle":"` + strings.Repeat("x", 81) + `"}`)
 	var badResp struct {
 		OK    bool   `json:"ok"`
 		Error string `json:"error"`

@@ -1,8 +1,8 @@
-# Hearthside: Project Plan v0.7 (Sudoku First)
+# Hearthside: Project Plan v0.8 (Phase 1 In Progress)
 
-Draft v0.7, November 26, 2026. Status legend: **Confirmed** means locked by the project owner; **Proposed** means recommended default awaiting confirmation if changes are needed; **Open** means unresolved.
+Draft v0.8, November 26, 2026. Status legend: **Confirmed** means locked by the project owner; **Proposed** means recommended default awaiting confirmation if changes are needed; **Open** means unresolved.
 
-Version 0.7 locks D15 (device-to-OS mapping) and D16 (`hearthside.example.com` on Traefik, internal HTTPS first), adds D18 (Bun + Vite for web tooling), and adds D19 (Google Antigravity implementation workflow).
+Version 0.8 closes out Phase 0 (Clean Minimal and Warm Hearthside light/dark themes, self-hosted OFL fonts, asset provenance manifest and tool inventory, Standard Go WASM verdict locked, and Spike B passed across tested family devices with Galaxy Tab S10 FE pending hardware) and adds detailed Phase 1 steps (1.1–1.6).
 
 ## 1. Vision and scope
 
@@ -391,15 +391,64 @@ Done when: every device has a recorded result and decision.
 
 Done when: placeholder grid switches themes and light/dark live, and the tool inventory and license manifest exist.
 
-### 11.6 Phase 0 exit checklist
+### 11.6 Phase 0 exit checklist (Completed)
 
-- Repo, Bun + Go tooling, Antigravity `AGENTS.md`, and GitHub Actions CI are green; ADRs D1–D19 are logged.
-- WASM spike verdict recorded in `docs/decisions/wasm-spike.md`.
-- Device matrix completed in `docs/decisions/pwa-device-matrix.md`.
-- Design tokens, two themes, and dark mode demonstrated on the walking skeleton.
-- Asset tool inventory and license manifest exist.
-- Plan updated with Phase 1 detailed steps.
+- [x] Repo, Bun + Go tooling, Antigravity `AGENTS.md`, and GitHub Actions CI are green; ADRs D1–D19 are logged.
+- [x] WASM spike verdict recorded and locked to **Standard Go WASM** in `docs/decisions/wasm-spike.md` (`workbox.maximumFileSizeToCacheInBytes >= 8 MiB`).
+- [x] Device matrix completed in `docs/decisions/pwa-device-matrix.md` across tested Windows 10/11 and Android devices (Fire OS retired from support floor; Galaxy Tab S10 FE pending hardware).
+- [x] Design tokens, two starter themes (**Clean Minimal** and **Warm Hearthside**) with light/dark modes, and self-hosted offline fonts demonstrated on the walking skeleton (`packages/ui`, `apps/web`).
+- [x] Asset tool inventory (`docs/assets/tool-inventory.md`) and license manifest (`assets/manifest.json`) exist with an automated manifest guard test.
+- [x] Plan updated with Phase 1 detailed steps.
 
-## 12. Next step
+## 12. Phase 1 in detail (Sudoku engine)
 
-Execute Phase 0 Step 1 inside WSL2 (`~/projects/hearthside`) with Antigravity: initialize the repo, Bun + Go workspaces, `AGENTS.md`, and CI workflow, then proceed to Step 2 (walking skeleton deployed behind Traefik at `https://hearthside.example.com`).
+Phase 1 delivers the pure Go Sudoku engine in `engine/sudoku` (shared by both the Phase 4+ Go backend and the client WASM Web Worker) with zero HTTP, SQLite, OS filesystem, or global `math/rand` dependencies.
+
+### 12.1 Step 1.1: Core board model and uniqueness solver
+
+1. Define an 81-cell `Board` with values (`0–9`), `Given` flags, and `uint16` 9-bit candidate masks (`1<<1` through `1<<9`), precomputed row/column/box/peer lookup tables, and `math/bits` mask helpers.
+2. Implement canonical 81-character string parsing/serialization (`0` or `.` for empty) and board validation (rejecting out-of-range digits and peer conflicts).
+3. Implement an allocation-free MRV backtracking solver: `CountSolutions(limit int)` (stopping at `limit = 2` to prove uniqueness) and `SolveBacktrack()` returning the unique solution when `count == 1`.
+
+Done when: table-driven unit tests cover parsing, validation, bitmask invariants, and 0 / 1 / >1 solution boards under `go test -race`.
+
+### 12.2 Step 1.2: Easy and Medium logical techniques with step traces
+
+1. Define `Difficulty` (`Easy`, `Medium`, `Hard`), `Technique` enum, `Region`, and structured `Step` (`Technique`, `Difficulty`, `Region`, `DrivingCells`, `Placements`, `Eliminations`) usable by both the grader and 4-tier UI hints.
+2. Implement priority-ordered `NextStep(board)` and `ApplyStep(step)`:
+   - Easy: `NakedSingle`, `HiddenSingle`.
+   - Medium: `PointingLine` (pointing pairs/triples), `BoxLineReduction` (claiming), `NakedPair`, `HiddenPair`, `NakedTriple`, `HiddenTriple`.
+
+Done when: isolated fixture tests verify exact technique, driving cells, placements, and eliminations for every Easy and Medium technique.
+
+### 12.3 Step 1.3: Hard techniques and puzzle grader
+
+1. Implement Hard logical techniques (`XWing`, `XYWing`, `Swordfish`) in ascending difficulty order.
+2. Implement a logical solve/grade function that iteratively applies `NextStep`, records the full step trace and highest technique tier reached, and rejects any puzzle requiring guessing.
+3. Verify against golden Easy, Medium, and Hard puzzle fixtures.
+
+### 12.4 Step 1.4: Deterministic generator and property tests
+
+1. Build a seeded deterministic generator (local `math/rand/v2` PCG, zero global RNG) that constructs a full valid grid, removes clues symmetrically or deterministically, verifies uniqueness (`CountSolutions(2) == 1`), grades, and accepts only puzzles matching the requested difficulty tier.
+2. Define `PuzzleRecord` (`id`, `seed`, `engineVersion`, `difficulty`, `techniquesRequired`, `clues`, `solution`).
+3. Add property tests for determinism, uniqueness, solvability without guessing, and tier correctness, plus Go benchmarks.
+
+### 12.5 Step 1.5: Puzzle-bank CLI
+
+1. Add `engine/sudoku/cmd/genbank` (keeping core `engine/sudoku` free of OS/filesystem imports) to generate deterministic starter puzzle packs in JSON for Easy, Medium, and Hard tiers.
+
+### 12.6 Step 1.6: Production WASM bridge and budget check
+
+1. Expose coarse-grained JSON bridge functions (`nextStep`, `countSolutions`, `generatePuzzle`, `gradePuzzle`, `version`) in `engine/sudoku/cmd/wasm`.
+2. Rebuild with `scripts/build-wasm.sh` and confirm Standard Go WASM stays `<= 2 MiB` gzip-9 and within `workbox.maximumFileSizeToCacheInBytes` (`>= 8 MiB`).
+
+### 12.7 Phase 1 exit checklist
+
+- `go vet`, `go test -race`, `golangci-lint`, and `GOOS=js GOARCH=wasm go build` pass with zero issues.
+- Isolated tests pass for every Easy, Medium, and Hard technique and golden puzzles.
+- Deterministic generator produces verified unique, graded puzzles across all three tiers repeatable from `(seed, engineVersion, difficulty)`.
+- Starter puzzle bank JSON is generated and ready for Phase 2 bundling.
+
+## 13. Next step
+
+Proceed with Phase 1 (`engine/sudoku` core board, uniqueness solver, logical techniques, grader, generator, and WASM bridge), then move to Phase 2 (offline PWA shell and Sudoku gameplay in `packages/game-core`, `games/sudoku`, and `apps/web`).
