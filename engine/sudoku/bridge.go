@@ -3,28 +3,50 @@ package sudoku
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+)
+
+// HintStatus classifies the outcome of NextHintJSON for client UI handling.
+type HintStatus string
+
+const (
+	// HintStatusOK indicates a logical next step was found.
+	HintStatusOK HintStatus = "ok"
+	// HintStatusConflict indicates the current board has conflicting peer placements.
+	HintStatusConflict HintStatus = "conflict"
+	// HintStatusWrongEntry indicates the board has no peer conflicts, but at least one entry disagrees with solution.
+	HintStatusWrongEntry HintStatus = "wrong_entry"
+	// HintStatusUnsolvable indicates the current board has zero valid solutions.
+	HintStatusUnsolvable HintStatus = "unsolvable"
+	// HintStatusSolved indicates all 81 cells are validly filled.
+	HintStatusSolved HintStatus = "solved"
+	// HintStatusNoLogicalStep indicates the board is valid and solvable, but requires guessing beyond implemented techniques.
+	HintStatusNoLogicalStep HintStatus = "no_logical_step"
 )
 
 type boardRequest struct {
-	Digits []uint8 `json:"digits"`
+	Board  string  `json:"board"`
 	Puzzle string  `json:"puzzle"`
+	Clues  string  `json:"clues"`
+	Digits []uint8 `json:"digits"`
 }
 
-// HintSummary preserves the Phase 0 Spike A hint response shape while delegating to NextStep.
-type HintSummary struct {
-	Found        bool          `json:"found"`
-	Technique    Technique     `json:"technique,omitempty"`
-	Cell         int           `json:"cell"`
-	Digit        uint8         `json:"digit"`
-	Eliminations []Elimination `json:"eliminations"`
+type nextHintRequest struct {
+	Board    string  `json:"board"`
+	Puzzle   string  `json:"puzzle"`
+	Clues    string  `json:"clues"`
+	Digits   []uint8 `json:"digits"`
+	Solution string  `json:"solution"`
 }
 
 type nextHintResponse struct {
-	OK            bool         `json:"ok"`
-	EngineVersion string       `json:"engineVersion"`
-	Hint          *HintSummary `json:"hint,omitempty"`
-	Step          *Step        `json:"step,omitempty"`
-	Error         string       `json:"error,omitempty"`
+	OK            bool       `json:"ok"`
+	EngineVersion string     `json:"engineVersion"`
+	Status        HintStatus `json:"status,omitempty"`
+	ConflictCells []int      `json:"conflictCells,omitempty"`
+	WrongCells    []int      `json:"wrongCells,omitempty"`
+	Step          *Step      `json:"step,omitempty"`
+	Error         string     `json:"error,omitempty"`
 }
 
 type nextStepResponse struct {
@@ -43,23 +65,95 @@ type countSolutionsResponse struct {
 	Error         string `json:"error,omitempty"`
 }
 
-func parseBoardRequest(boardJSON string) (Board, error) {
+type generatePuzzleRequest struct {
+	Seed       uint64     `json:"seed"`
+	Difficulty Difficulty `json:"difficulty"`
+}
+
+type generatePuzzleResponse struct {
+	OK            bool          `json:"ok"`
+	EngineVersion string        `json:"engineVersion"`
+	Puzzle        *PuzzleRecord `json:"puzzle,omitempty"`
+	Error         string        `json:"error,omitempty"`
+}
+
+type gradePuzzleResponse struct {
+	OK            bool         `json:"ok"`
+	EngineVersion string       `json:"engineVersion"`
+	Grade         *GradeResult `json:"grade,omitempty"`
+	Error         string       `json:"error,omitempty"`
+}
+
+func parseRawDigitsString(s string) ([BoardSize]uint8, error) {
+	var digits [BoardSize]uint8
+	trimmed := strings.TrimSpace(s)
+	if len(trimmed) != BoardSize {
+		return digits, fmt.Errorf("%w: expected %d chars, got %d", ErrInvalidInput, BoardSize, len(trimmed))
+	}
+
+	for i := range BoardSize {
+		ch := trimmed[i]
+		switch {
+		case ch == '0' || ch == '.':
+			digits[i] = 0
+		case ch >= '1' && ch <= '9':
+			digits[i] = ch - '0'
+		default:
+			return [BoardSize]uint8{}, fmt.Errorf("%w: invalid char %q at index %d", ErrInvalidInput, ch, i)
+		}
+	}
+	return digits, nil
+}
+
+func parseRawBoardPayload(board, puzzle, clues string, digits []uint8) ([BoardSize]uint8, error) {
+	if board != "" {
+		return parseRawDigitsString(board)
+	}
+	if puzzle != "" {
+		return parseRawDigitsString(puzzle)
+	}
+	if clues != "" {
+		return parseRawDigitsString(clues)
+	}
+	if len(digits) > 0 {
+		if len(digits) != BoardSize {
+			return [BoardSize]uint8{}, fmt.Errorf("%w: expected %d digits, got %d", ErrInvalidInput, BoardSize, len(digits))
+		}
+		var out [BoardSize]uint8
+		for i, d := range digits {
+			if d > GridSize {
+				return [BoardSize]uint8{}, fmt.Errorf("%w: digit %d out of range at cell %d", ErrInvalidInput, d, i)
+			}
+			out[i] = d
+		}
+		return out, nil
+	}
+	return [BoardSize]uint8{}, fmt.Errorf("%w: expected 'board', 'puzzle', 'clues', or 'digits'", ErrInvalidInput)
+}
+
+func parseBoardRequest(payloadJSON string) (Board, error) {
 	var req boardRequest
-	if err := json.Unmarshal([]byte(boardJSON), &req); err != nil {
+	if err := json.Unmarshal([]byte(payloadJSON), &req); err != nil {
 		return Board{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
-	if len(req.Digits) > 0 {
-		if len(req.Digits) != BoardSize {
-			return Board{}, fmt.Errorf("%w: expected %d digits, got %d", ErrInvalidInput, BoardSize, len(req.Digits))
-		}
-		var digits [BoardSize]uint8
-		copy(digits[:], req.Digits)
-		return NewBoardFromDigits(digits)
+	digits, err := parseRawBoardPayload(req.Board, req.Puzzle, req.Clues, req.Digits)
+	if err != nil {
+		return Board{}, err
 	}
-	if req.Puzzle != "" {
-		return ParseBoardString(req.Puzzle)
+	return NewBoardFromDigits(digits)
+}
+
+func normalizeStep(s Step) Step {
+	if s.DrivingCells == nil {
+		s.DrivingCells = []int{}
 	}
-	return Board{}, fmt.Errorf("%w: expected 'digits' array or 'puzzle' string", ErrInvalidInput)
+	if s.Placements == nil {
+		s.Placements = []Placement{}
+	}
+	if s.Eliminations == nil {
+		s.Eliminations = []Elimination{}
+	}
+	return s
 }
 
 func marshalString(v any) string {
@@ -70,9 +164,37 @@ func marshalString(v any) string {
 	return string(raw)
 }
 
+func findConflictCells(digits [BoardSize]uint8) []int {
+	var conflicts []int
+	for i := range BoardSize {
+		v := digits[i]
+		if v == 0 {
+			continue
+		}
+		for _, peer := range Peers[i] {
+			if digits[peer] == v {
+				conflicts = append(conflicts, i)
+				break
+			}
+		}
+	}
+	return conflicts
+}
+
+func findWrongCells(digits [BoardSize]uint8, solution Board) []int {
+	var wrong []int
+	for i := range BoardSize {
+		v := digits[i]
+		if v != 0 && v != solution.Cells[i].Value {
+			wrong = append(wrong, i)
+		}
+	}
+	return wrong
+}
+
 // NextStepJSON evaluates the next logical step for a JSON board payload and returns a JSON response.
-func NextStepJSON(boardJSON string) string {
-	b, err := parseBoardRequest(boardJSON)
+func NextStepJSON(requestJSON string) string {
+	b, err := parseBoardRequest(requestJSON)
 	if err != nil {
 		return marshalString(nextStepResponse{
 			OK:            false,
@@ -95,17 +217,28 @@ func NextStepJSON(boardJSON string) string {
 			Found:         false,
 		})
 	}
+	normalized := normalizeStep(step)
 	return marshalString(nextStepResponse{
 		OK:            true,
 		EngineVersion: EngineVersion,
 		Found:         true,
-		Step:          &step,
+		Step:          &normalized,
 	})
 }
 
-// NextHintJSON evaluates the next logical hint for a JSON board payload and returns a JSON response.
-func NextHintJSON(boardJSON string) string {
-	b, err := parseBoardRequest(boardJSON)
+// NextHintJSON inspects a board state (with optional solution string) and returns either
+// conflict/wrong-entry diagnostics, solved/unsolvable status, or the full next logical Step.
+func NextHintJSON(requestJSON string) string {
+	var req nextHintRequest
+	if err := json.Unmarshal([]byte(requestJSON), &req); err != nil {
+		return marshalString(nextHintResponse{
+			OK:            false,
+			EngineVersion: EngineVersion,
+			Error:         fmt.Errorf("%w: %v", ErrInvalidInput, err).Error(),
+		})
+	}
+
+	digits, err := parseRawBoardPayload(req.Board, req.Puzzle, req.Clues, req.Digits)
 	if err != nil {
 		return marshalString(nextHintResponse{
 			OK:            false,
@@ -113,7 +246,82 @@ func NextHintJSON(boardJSON string) string {
 			Error:         err.Error(),
 		})
 	}
-	step, found, err := NextStep(b)
+
+	var solBoard Board
+	hasSolution := req.Solution != ""
+	if hasSolution {
+		solBoard, err = ParseBoardString(req.Solution)
+		if err != nil {
+			return marshalString(nextHintResponse{
+				OK:            false,
+				EngineVersion: EngineVersion,
+				Error:         fmt.Errorf("invalid solution: %w", err).Error(),
+			})
+		}
+		if !solBoard.IsSolved() {
+			return marshalString(nextHintResponse{
+				OK:            false,
+				EngineVersion: EngineVersion,
+				Error:         fmt.Errorf("%w: solution must be a complete solved board", ErrInvalidInput).Error(),
+			})
+		}
+	}
+
+	if conflicts := findConflictCells(digits); len(conflicts) > 0 {
+		return marshalString(nextHintResponse{
+			OK:            true,
+			EngineVersion: EngineVersion,
+			Status:        HintStatusConflict,
+			ConflictCells: conflicts,
+		})
+	}
+
+	if hasSolution {
+		if wrong := findWrongCells(digits, solBoard); len(wrong) > 0 {
+			return marshalString(nextHintResponse{
+				OK:            true,
+				EngineVersion: EngineVersion,
+				Status:        HintStatusWrongEntry,
+				WrongCells:    wrong,
+			})
+		}
+	}
+
+	board, err := NewBoardFromDigits(digits)
+	if err != nil {
+		return marshalString(nextHintResponse{
+			OK:            false,
+			EngineVersion: EngineVersion,
+			Error:         err.Error(),
+		})
+	}
+	if board.IsSolved() {
+		return marshalString(nextHintResponse{
+			OK:            true,
+			EngineVersion: EngineVersion,
+			Status:        HintStatusSolved,
+		})
+	}
+
+	if !hasSolution {
+		count, countErr := board.CountSolutions(1)
+		if countErr != nil {
+			return marshalString(nextHintResponse{
+				OK:            false,
+				EngineVersion: EngineVersion,
+				Error:         countErr.Error(),
+			})
+		}
+		if count == 0 {
+			return marshalString(nextHintResponse{
+				OK:            true,
+				EngineVersion: EngineVersion,
+				Status:        HintStatusUnsolvable,
+			})
+		}
+	}
+
+	step, found, err := NextStep(board)
 	if err != nil {
 		return marshalString(nextHintResponse{
 			OK:            false,
@@ -125,40 +333,85 @@ func NextHintJSON(boardJSON string) string {
 		return marshalString(nextHintResponse{
 			OK:            true,
 			EngineVersion: EngineVersion,
-			Hint: &HintSummary{
-				Found:        false,
-				Cell:         -1,
-				Eliminations: []Elimination{},
-			},
+			Status:        HintStatusNoLogicalStep,
 		})
 	}
 
-	cell := -1
-	digit := uint8(0)
-	if len(step.Placements) > 0 {
-		cell = step.Placements[0].Cell
-		digit = step.Placements[0].Digit
-	} else if len(step.DrivingCells) > 0 {
-		cell = step.DrivingCells[0]
-	}
-
+	normalized := normalizeStep(step)
 	return marshalString(nextHintResponse{
 		OK:            true,
 		EngineVersion: EngineVersion,
-		Hint: &HintSummary{
-			Found:        true,
-			Technique:    step.Technique,
-			Cell:         cell,
-			Digit:        digit,
-			Eliminations: step.Eliminations,
-		},
-		Step: &step,
+		Status:        HintStatusOK,
+		Step:          &normalized,
+	})
+}
+
+// GeneratePuzzleJSON generates a deterministic PuzzleRecord for a JSON {seed, difficulty} payload.
+func GeneratePuzzleJSON(requestJSON string) string {
+	var req generatePuzzleRequest
+	if err := json.Unmarshal([]byte(requestJSON), &req); err != nil {
+		return marshalString(generatePuzzleResponse{
+			OK:            false,
+			EngineVersion: EngineVersion,
+			Error:         fmt.Errorf("%w: %v", ErrInvalidInput, err).Error(),
+		})
+	}
+
+	rec, err := Generate(req.Seed, req.Difficulty)
+	if err != nil {
+		return marshalString(generatePuzzleResponse{
+			OK:            false,
+			EngineVersion: EngineVersion,
+			Error:         err.Error(),
+		})
+	}
+	if rec.TechniquesRequired == nil {
+		rec.TechniquesRequired = []Technique{}
+	}
+
+	return marshalString(generatePuzzleResponse{
+		OK:            true,
+		EngineVersion: EngineVersion,
+		Puzzle:        &rec,
+	})
+}
+
+// GradePuzzleJSON validates uniqueness and logically grades a JSON puzzle payload.
+func GradePuzzleJSON(requestJSON string) string {
+	b, err := parseBoardRequest(requestJSON)
+	if err != nil {
+		return marshalString(gradePuzzleResponse{
+			OK:            false,
+			EngineVersion: EngineVersion,
+			Error:         err.Error(),
+		})
+	}
+
+	res, err := Grade(&b)
+	if err != nil {
+		return marshalString(gradePuzzleResponse{
+			OK:            false,
+			EngineVersion: EngineVersion,
+			Error:         err.Error(),
+		})
+	}
+	if res.TechniquesRequired == nil {
+		res.TechniquesRequired = []Technique{}
+	}
+	for i := range res.Steps {
+		res.Steps[i] = normalizeStep(res.Steps[i])
+	}
+
+	return marshalString(gradePuzzleResponse{
+		OK:            true,
+		EngineVersion: EngineVersion,
+		Grade:         &res,
 	})
 }
 
 // CountSolutionsJSON counts solutions (up to 2) for a JSON board payload and returns a JSON response.
-func CountSolutionsJSON(boardJSON string) string {
-	b, err := parseBoardRequest(boardJSON)
+func CountSolutionsJSON(requestJSON string) string {
+	b, err := parseBoardRequest(requestJSON)
 	if err != nil {
 		return marshalString(countSolutionsResponse{
 			OK:            false,

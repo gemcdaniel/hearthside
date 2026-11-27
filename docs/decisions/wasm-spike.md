@@ -37,3 +37,13 @@ Run via the **WASM Spike Benchmark** in the Phase 0 Diagnostics panel (10 iterat
 
 - **Chosen path:** **Standard Go WASM** (`GOOS=js GOARCH=wasm` executed inside a dedicated Web Worker). **TinyGo** and the **TypeScript fallback solver** are not needed.
 - **Workbox precache requirement:** `workbox.maximumFileSizeToCacheInBytes` in `apps/web/vite.config.ts` must remain `>= 8 MiB` (currently `10 MiB`) so Workbox continues to precache the uncompressed `.wasm` binary as Phase 1 adds the full logical solver, generator, and grader.
+
+## Phase 1 Production WASM Size Check
+
+Measured via `scripts/build-wasm.sh` (`go version go1.27.4 linux/amd64`, `-ldflags="-s -w" -trimpath`) after completing the Phase 1 engine (`engine/sudoku` with Easy/Medium/Hard logical techniques, full grader, deterministic generator, and upgraded production WASM bridge):
+
+- **Bridge methods exposed (`globalThis.hearthsideSudoku`):** `nextHint`, `generatePuzzle`, `gradePuzzle`, `countSolutions`, `nextStep`, `version`.
+
+| Variant                                    | `.wasm` Raw            | `.wasm` Gzip-9         | Glue `.js` Raw      | Glue `.js` Gzip-9 | Budgets (`<= 2.00 MiB` gzip-9, `< 8 MiB` Workbox raw) |
+| ------------------------------------------ | ---------------------- | ---------------------- | ------------------- | ----------------- | ----------------------------------------------------- |
+| Standard Go (`-ldflags="-s -w" -trimpath`) | 4,593,230 B (4.38 MiB) | 1,260,367 B (1.20 MiB) | 16,992 B (16.6 KiB) | 4,368 B (4.3 KiB) | Pass                                                  |

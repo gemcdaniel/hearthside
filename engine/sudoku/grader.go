@@ -32,6 +32,13 @@ var canonicalTechniqueOrder = []Technique{
 	TechniqueSwordfish,
 }
 
+// AllTechniques returns a copy of all implemented logical techniques in canonical ascending order.
+func AllTechniques() []Technique {
+	out := make([]Technique, len(canonicalTechniqueOrder))
+	copy(out, canonicalTechniqueOrder)
+	return out
+}
+
 func difficultyRank(d Difficulty) int {
 	switch d {
 	case DifficultyEasy:

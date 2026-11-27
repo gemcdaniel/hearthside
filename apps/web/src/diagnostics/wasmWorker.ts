@@ -1,4 +1,15 @@
-import type { WasmWorkerRequest, WasmWorkerResponse } from './wasmBenchmark';
+import {
+  countPuzzleClues,
+  type HintStatus,
+  type WasmBenchmarkWorkerRequest,
+  type WasmGenerateBenchmarkEntry,
+  type WasmGenerateBenchmarkWorkerRequest,
+  type WasmGeneratePuzzleResponse,
+  type WasmGradePuzzleResponse,
+  type WasmNextHintResponse,
+  type WasmWorkerRequest,
+  type WasmWorkerResponse,
+} from './wasmBenchmark';
 
 interface GoWasmRuntime {
   readonly importObject: WebAssembly.Imports;
@@ -6,8 +17,11 @@ interface GoWasmRuntime {
 }
 
 interface HearthsideSudokuWasmApi {
-  nextHint(boardJson: string): string;
-  countSolutions(boardJson: string): string;
+  nextHint(requestJson: string): string;
+  generatePuzzle(requestJson: string): string;
+  gradePuzzle(requestJson: string): string;
+  countSolutions(requestJson: string): string;
+  nextStep(requestJson: string): string;
   version(): string;
 }
 
@@ -61,11 +75,14 @@ async function waitForApi(timeoutMs = 5000): Promise<HearthsideSudokuWasmApi> {
   return workerScope.hearthsideSudoku;
 }
 
-async function executeBenchmark(request: WasmWorkerRequest): Promise<WasmWorkerResponse> {
+async function loadWasmApi(
+  wasmUrl: string,
+  glueUrl: string,
+): Promise<{ api: HearthsideSudokuWasmApi; coldStartMs: number }> {
   const startTime = performance.now();
   const origin = workerScope.location.origin;
-  const glueHref = new URL(request.glueUrl, origin).href;
-  const wasmHref = new URL(request.wasmUrl, origin).href;
+  const glueHref = new URL(glueUrl, origin).href;
+  const wasmHref = new URL(wasmUrl, origin).href;
 
   await import(/* @vite-ignore */ glueHref);
   if (typeof workerScope.Go !== 'function') {
@@ -85,8 +102,15 @@ async function executeBenchmark(request: WasmWorkerRequest): Promise<WasmWorkerR
     throw runtimeError;
   }
 
-  const coldStartMs = performance.now() - startTime;
-  const boardJson = JSON.stringify({ puzzle: request.puzzle });
+  return {
+    api,
+    coldStartMs: performance.now() - startTime,
+  };
+}
+
+async function executeBenchmark(request: WasmBenchmarkWorkerRequest): Promise<WasmWorkerResponse> {
+  const { api, coldStartMs } = await loadWasmApi(request.wasmUrl, request.glueUrl);
+  const boardJson = JSON.stringify({ board: request.puzzle });
 
   const hintSamplesMs: number[] = [];
   let lastHintRaw = '';
@@ -104,11 +128,7 @@ async function executeBenchmark(request: WasmWorkerRequest): Promise<WasmWorkerR
     countSamplesMs.push(performance.now() - t0);
   }
 
-  const parsedHint = JSON.parse(lastHintRaw) as {
-    ok?: boolean;
-    hint?: { found?: boolean; technique?: string };
-    error?: string;
-  };
+  const parsedHint = JSON.parse(lastHintRaw) as WasmNextHintResponse;
   if (!parsedHint.ok) {
     throw new Error(parsedHint.error ?? 'WASM nextHint failed.');
   }
@@ -122,20 +142,80 @@ async function executeBenchmark(request: WasmWorkerRequest): Promise<WasmWorkerR
     throw new Error(parsedCount.error ?? 'WASM countSolutions failed.');
   }
 
+  const hintStatus: HintStatus = parsedHint.status ?? 'no_logical_step';
+  const hintFound = hintStatus === 'ok' && Boolean(parsedHint.step);
+  const hintTechnique = parsedHint.step?.technique ?? 'none';
+
   return {
     ok: true,
+    kind: 'benchmark',
     engineVersion: api.version(),
     coldStartMs,
     hintSamplesMs,
     countSamplesMs,
-    hintFound: Boolean(parsedHint.hint?.found),
-    hintTechnique: parsedHint.hint?.technique ?? 'none',
+    hintStatus,
+    hintFound,
+    hintTechnique,
     solutionCount: parsedCount.solutions ?? 0,
   };
 }
 
+async function executeGenerateBenchmark(
+  request: WasmGenerateBenchmarkWorkerRequest,
+): Promise<WasmWorkerResponse> {
+  const { api, coldStartMs } = await loadWasmApi(request.wasmUrl, request.glueUrl);
+  const entries: WasmGenerateBenchmarkEntry[] = [];
+
+  for (const difficulty of request.difficulties) {
+    const genStart = performance.now();
+    const genRaw = api.generatePuzzle(JSON.stringify({ seed: request.seed, difficulty }));
+    const generateMs = performance.now() - genStart;
+
+    const parsedGen = JSON.parse(genRaw) as WasmGeneratePuzzleResponse;
+    if (!parsedGen.ok || !parsedGen.puzzle) {
+      throw new Error(parsedGen.error ?? `WASM generatePuzzle(${difficulty}) failed.`);
+    }
+
+    const gradeStart = performance.now();
+    const gradeRaw = api.gradePuzzle(JSON.stringify({ clues: parsedGen.puzzle.clues }));
+    const gradeMs = performance.now() - gradeStart;
+
+    const parsedGrade = JSON.parse(gradeRaw) as WasmGradePuzzleResponse;
+    if (!parsedGrade.ok || !parsedGrade.grade) {
+      throw new Error(parsedGrade.error ?? `WASM gradePuzzle(${difficulty}) failed.`);
+    }
+
+    entries.push({
+      difficulty,
+      puzzleId: parsedGen.puzzle.id,
+      clueCount: countPuzzleClues(parsedGen.puzzle.clues),
+      generateMs,
+      gradeMs,
+      gradedDifficulty: parsedGrade.grade.difficulty,
+      gradeMatched: parsedGrade.grade.difficulty === difficulty,
+      techniquesRequired: parsedGrade.grade.techniquesRequired,
+    });
+  }
+
+  return {
+    ok: true,
+    kind: 'generateBenchmark',
+    engineVersion: api.version(),
+    coldStartMs,
+    seed: request.seed,
+    entries,
+  };
+}
+
+async function handleWorkerRequest(request: WasmWorkerRequest): Promise<WasmWorkerResponse> {
+  if (request.kind === 'generateBenchmark') {
+    return executeGenerateBenchmark(request);
+  }
+  return executeBenchmark(request);
+}
+
 workerScope.addEventListener('message', (event) => {
-  void executeBenchmark(event.data)
+  void handleWorkerRequest(event.data)
     .then((result) => {
       workerScope.postMessage(result);
     })

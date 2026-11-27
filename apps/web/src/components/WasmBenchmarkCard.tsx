@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   DEFAULT_BENCHMARK_ITERATIONS,
+  DEFAULT_GENERATE_SEED,
   WASM_MAX_GZIP_BYTES,
   WASM_MAX_HINT_MS,
   WASM_MAX_STARTUP_MS,
@@ -9,7 +10,9 @@ import {
   formatMs,
   loadWasmManifest,
   runWasmBenchmark,
+  runWasmGenerateBenchmark,
   type WasmBenchmarkResult,
+  type WasmGenerateBenchmarkResult,
   type WasmManifest,
 } from '../diagnostics/wasmBenchmark';
 
@@ -17,10 +20,13 @@ export function WasmBenchmarkCard() {
   const [manifest, setManifest] = useState<WasmManifest | null>(null);
   const [manifestError, setManifestError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<'go' | 'tinygo'>('go');
-  const [running, setRunning] = useState<boolean>(false);
+  const [runningMode, setRunningMode] = useState<'idle' | 'benchmark' | 'generate'>('idle');
   const [result, setResult] = useState<WasmBenchmarkResult | null>(null);
+  const [generateResult, setGenerateResult] = useState<WasmGenerateBenchmarkResult | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
+
+  const running = runningMode !== 'idle';
 
   useEffect(() => {
     let active = true;
@@ -59,7 +65,7 @@ export function WasmBenchmarkCard() {
     if (!selectedVariant) {
       return;
     }
-    setRunning(true);
+    setRunningMode('benchmark');
     setRunError(null);
     setCopyStatus(null);
     try {
@@ -68,7 +74,23 @@ export function WasmBenchmarkCard() {
     } catch (err) {
       setRunError(err instanceof Error ? err.message : 'WASM benchmark failed.');
     } finally {
-      setRunning(false);
+      setRunningMode('idle');
+    }
+  }
+
+  async function handleRunGenerateBenchmark() {
+    if (!selectedVariant) {
+      return;
+    }
+    setRunningMode('generate');
+    setRunError(null);
+    try {
+      const generated = await runWasmGenerateBenchmark(selectedVariant, DEFAULT_GENERATE_SEED);
+      setGenerateResult(generated);
+    } catch (err) {
+      setRunError(err instanceof Error ? err.message : 'WASM generatePuzzle benchmark failed.');
+    } finally {
+      setRunningMode('idle');
     }
   }
 
@@ -99,7 +121,7 @@ export function WasmBenchmarkCard() {
   return (
     <div className="hs-diag-card">
       <div className="hs-diag-row">
-        <span className="hs-diag-label">WASM Spike Benchmark</span>
+        <span className="hs-diag-label">WASM Engine Benchmark</span>
         <div className="hs-btn-group">
           {manifest ? (
             <label className="hs-select-label">
@@ -130,7 +152,15 @@ export function WasmBenchmarkCard() {
             disabled={running || !selectedVariant}
             onClick={() => void handleRunBenchmark()}
           >
-            {running ? 'Running...' : 'Run Benchmark'}
+            {runningMode === 'benchmark' ? 'Running...' : 'Run Benchmark'}
+          </button>
+          <button
+            type="button"
+            className="hs-btn hs-btn-secondary"
+            disabled={running || !selectedVariant}
+            onClick={() => void handleRunGenerateBenchmark()}
+          >
+            {runningMode === 'generate' ? 'Generating...' : 'Benchmark Generate (E/M/H)'}
           </button>
           <button
             type="button"
@@ -178,7 +208,8 @@ export function WasmBenchmarkCard() {
           <div className="hs-diag-row">
             <span className="hs-diag-output">
               nextHint ({result.iterations}x): median {formatMs(result.hintStats.medianMs)}, p95{' '}
-              {formatMs(result.hintStats.p95Ms)} (&lt; {WASM_MAX_HINT_MS} ms)
+              {formatMs(result.hintStats.p95Ms)} (&lt; {WASM_MAX_HINT_MS} ms, status=
+              {result.hintStatus}, technique={result.hintTechnique})
             </span>
             <span className="hs-badge" data-tone={result.budgets.hintPass ? 'success' : 'error'}>
               {result.budgets.hintPass ? 'Pass' : 'Fail'}
@@ -194,6 +225,27 @@ export function WasmBenchmarkCard() {
               {result.budgets.allPassed ? 'All Budgets Passed' : 'Budget Exceeded'}
             </span>
           </div>
+        </div>
+      ) : null}
+
+      {generateResult ? (
+        <div className="hs-benchmark-results" aria-live="polite">
+          <p className="hs-diag-output">
+            generatePuzzle (seed={generateResult.seed}): cold start{' '}
+            {formatMs(generateResult.coldStartMs)} (engine={generateResult.engineVersion})
+          </p>
+          {generateResult.entries.map((entry) => (
+            <div className="hs-diag-row" key={entry.difficulty}>
+              <span className="hs-diag-output">
+                {entry.difficulty}: gen {formatMs(entry.generateMs)}, grade{' '}
+                {formatMs(entry.gradeMs)}, {entry.clueCount} clues ({entry.puzzleId}) [
+                {entry.techniquesRequired.join(', ')}]
+              </span>
+              <span className="hs-badge" data-tone={entry.gradeMatched ? 'success' : 'error'}>
+                {entry.gradeMatched ? 'Verified' : 'Mismatch'}
+              </span>
+            </div>
+          ))}
         </div>
       ) : null}
 

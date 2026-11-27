@@ -324,15 +324,16 @@ func TestJSONBridge(t *testing.T) {
 
 	hintRaw := NextHintJSON(payload)
 	var hintResp struct {
-		OK            bool         `json:"ok"`
-		EngineVersion string       `json:"engineVersion"`
-		Hint          *HintSummary `json:"hint"`
-		Error         string       `json:"error"`
+		OK            bool       `json:"ok"`
+		EngineVersion string     `json:"engineVersion"`
+		Status        HintStatus `json:"status"`
+		Step          *Step      `json:"step"`
+		Error         string     `json:"error"`
 	}
 	if err := json.Unmarshal([]byte(hintRaw), &hintResp); err != nil {
 		t.Fatalf("unmarshal NextHintJSON failed: %v", err)
 	}
-	if !hintResp.OK || hintResp.Hint == nil || !hintResp.Hint.Found {
+	if !hintResp.OK || hintResp.Status != HintStatusOK || hintResp.Step == nil {
 		t.Fatalf("unexpected NextHintJSON response: %s", hintRaw)
 	}
 

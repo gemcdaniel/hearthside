@@ -2,13 +2,59 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   WASM_MAX_GZIP_BYTES,
   computeTimingStats,
+  countPuzzleClues,
   evaluateWasmBudgets,
   formatBenchmarkMarkdownRow,
   formatBytes,
   loadWasmManifest,
   parseWasmManifest,
+  runWasmBenchmark,
+  runWasmGenerateBenchmark,
   type WasmBenchmarkResult,
+  type WasmVariantInfo,
+  type WasmWorkerResponse,
 } from './wasmBenchmark';
+
+const sampleVariant: WasmVariantInfo = {
+  id: 'go',
+  label: 'Standard Go',
+  wasmUrl: '/wasm/sudoku-go.wasm',
+  glueUrl: '/wasm/wasm_exec-go.js',
+  wasmRawBytes: 2_621_440,
+  wasmGzipBytes: 716_800,
+  glueRawBytes: 17_000,
+  glueGzipBytes: 6_000,
+};
+
+function stubMockWorker(response: WasmWorkerResponse) {
+  const postMessageSpy = vi.fn();
+  const terminateSpy = vi.fn();
+
+  class MockWorker {
+    private readonly listeners = new Map<string, Array<(event: unknown) => void>>();
+
+    addEventListener(type: string, listener: (event: unknown) => void) {
+      const list = this.listeners.get(type) ?? [];
+      list.push(listener);
+      this.listeners.set(type, list);
+    }
+
+    postMessage(payload: unknown) {
+      postMessageSpy(payload);
+      const handlers = this.listeners.get('message') ?? [];
+      for (const handler of handlers) {
+        handler({ data: response });
+      }
+    }
+
+    terminate() {
+      terminateSpy();
+    }
+  }
+
+  vi.stubGlobal('Worker', MockWorker);
+  return { postMessageSpy, terminateSpy };
+}
 
 describe('wasmBenchmark helpers', () => {
   afterEach(() => {
@@ -30,6 +76,11 @@ describe('wasmBenchmark helpers', () => {
       p95Ms: 20,
       maxMs: 20,
     });
+  });
+
+  it('counts non-empty digit clues accurately', () => {
+    expect(countPuzzleClues('000.5.901')).toBe(3);
+    expect(countPuzzleClues('530070000600195000098000060800060003')).toBe(13);
   });
 
   it('evaluates Phase 0 WASM performance budgets accurately', () => {
@@ -54,21 +105,13 @@ describe('wasmBenchmark helpers', () => {
     expect(formatBytes(2 * 1024 * 1024)).toBe('2.00 MiB');
 
     const result: WasmBenchmarkResult = {
-      variant: {
-        id: 'go',
-        label: 'Standard Go',
-        wasmUrl: '/wasm/sudoku-go.wasm',
-        glueUrl: '/wasm/wasm_exec-go.js',
-        wasmRawBytes: 2_621_440,
-        wasmGzipBytes: 716_800,
-        glueRawBytes: 17_000,
-        glueGzipBytes: 6_000,
-      },
+      variant: sampleVariant,
       engineVersion: '0.1.0-dev',
       iterations: 10,
       coldStartMs: 123.44,
       hintStats: { minMs: 0.5, medianMs: 1.25, p95Ms: 2.5, maxMs: 2.5 },
       countStats: { minMs: 1.0, medianMs: 3.5, p95Ms: 5.0, maxMs: 5.0 },
+      hintStatus: 'no_logical_step',
       hintFound: false,
       hintTechnique: 'none',
       solutionCount: 1,
@@ -118,5 +161,59 @@ describe('wasmBenchmark helpers', () => {
 
     const loaded = await loadWasmManifest();
     expect(loaded).toEqual(sampleManifest);
+  });
+
+  it('dispatches benchmark and generateBenchmark worker requests cleanly', async () => {
+    const benchStub = stubMockWorker({
+      ok: true,
+      kind: 'benchmark',
+      engineVersion: '0.1.0-dev',
+      coldStartMs: 25,
+      hintSamplesMs: [0.4, 0.6],
+      countSamplesMs: [0.2, 0.3],
+      hintStatus: 'ok',
+      hintFound: true,
+      hintTechnique: 'x_wing',
+      solutionCount: 1,
+    });
+
+    const benchRes = await runWasmBenchmark(sampleVariant, 2);
+    expect(benchStub.postMessageSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'benchmark', iterations: 2 }),
+    );
+    expect(benchStub.terminateSpy).toHaveBeenCalledTimes(1);
+    expect(benchRes.hintStatus).toBe('ok');
+    expect(benchRes.hintTechnique).toBe('x_wing');
+
+    const genStub = stubMockWorker({
+      ok: true,
+      kind: 'generateBenchmark',
+      engineVersion: '0.1.0-dev',
+      coldStartMs: 22,
+      seed: 7,
+      entries: [
+        {
+          difficulty: 'easy',
+          puzzleId: 'hs-0.1.0-dev-easy-0000000000000007',
+          clueCount: 28,
+          generateMs: 2.1,
+          gradeMs: 0.2,
+          gradedDifficulty: 'easy',
+          gradeMatched: true,
+          techniquesRequired: ['naked_single', 'hidden_single'],
+        },
+      ],
+    });
+
+    const genRes = await runWasmGenerateBenchmark(sampleVariant, 7);
+    expect(genStub.postMessageSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'generateBenchmark',
+        seed: 7,
+        difficulties: ['easy', 'medium', 'hard'],
+      }),
+    );
+    expect(genStub.terminateSpy).toHaveBeenCalledTimes(1);
+    expect(genRes.entries[0]?.gradeMatched).toBe(true);
   });
 });
