@@ -67,6 +67,10 @@ func matchesExpectedOrigin(rawHeader, expectedScheme, expectedHost string) bool 
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
+	return decodeJSONWithLimit(w, r, dst, maxJSONBodyBytes)
+}
+
+func decodeJSONWithLimit(w http.ResponseWriter, r *http.Request, dst any, maxBytes int64) bool {
 	contentType := strings.TrimSpace(r.Header.Get("Content-Type"))
 	if contentType == "" {
 		WriteError(w, r, http.StatusUnsupportedMediaType, "unsupported_media_type", "Content-Type must be application/json")
@@ -78,7 +82,7 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 		return false
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 	dec := json.NewDecoder(r.Body)
 	if err := dec.Decode(dst); err != nil {
 		var maxBytesErr *http.MaxBytesError

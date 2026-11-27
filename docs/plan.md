@@ -1,8 +1,8 @@
-# Hearthside: Project Plan v1.2 (Phase 4 Complete)
+# Hearthside: Project Plan v1.3 (Phase 5, Run 1 Complete)
 
-Version 1.2, November 27, 2026. Status legend: **Confirmed** means locked by the project owner; **Proposed** means recommended default awaiting confirmation if changes are needed; **Open** means unresolved.
+Version 1.3, November 27, 2026. Status legend: **Confirmed** means locked by the project owner; **Proposed** means recommended default awaiting confirmation if changes are needed; **Open** means unresolved.
 
-Version 1.2 completes **Phase 4 (Backend foundation on the home server)** atop the offline-first `v1.0.0` PWA release: single-container Go + `/srv/web` serving behind Traefik, pure-Go SQLite with embedded migrations, invite-only Email + Password (Argon2id) and generic OIDC Discovery + PKCE accounts, child profiles (D9), background puzzle bank replenishment + canonical `DailySeed` parity (D28), PWA Account & Household UI with non-destructive local profile linking (D29), and full-stack Playwright E2E verification.
+Version 1.3 locks cloud sync decisions **D30–D34** and completes **Phase 5, Run 1** (SQLite sync schema `0004_cloud_sync.sql`, household-scoped Go sync service with optimistic revision checks, D30 completion auto-resolution, D31 monotonic puzzle record merges, D32 LWW gameplay/theme preference sync, and HTTP integration tests) atop the Phase 4 home-server foundation and `v1.0.0` offline-first PWA.
 
 ## 1. Vision and scope
 
@@ -61,7 +61,7 @@ Non-goals (Confirmed): monetization, app-store publishing, user analytics, Apple
 
 ## 3. Decisions
 
-D1 to D29 are confirmed unless noted as Proposed.
+D1 to D34 are confirmed unless noted as Proposed.
 
 **D1. Backend audience (confirmed).** Private and invite-only, for the family, on the home server, eventually reachable from the internet. Adult accounts authenticate via Email + Password (Argon2id) or generic OpenID Connect (Google or any self-hosted OIDC provider via Discovery + PKCE). The account model is settled in D9 and D27.
 
@@ -127,6 +127,16 @@ D1 to D29 are confirmed unless noted as Proposed.
 
 **D29. Non-destructive local profile linking (confirmed).** Signing into a household account in Phase 4 links existing local IndexedDB profiles (e.g., Guest and family profiles created in `v1.0.0`) non-destructively to server-backed household profiles without wiping local games, notes, or stats. Sign-out or offline operation always preserves local playability.
 
+**D30. Save slot conflict rule (confirmed).** Each synced save slot `(profileId, gameId, slot)` carries a server-assigned monotonic `revision` starting at `1`. Fast-forward writes matching `baseRevision` advance `revision` cleanly. When `baseRevision` disagrees on the same `puzzleId` with neither side tombstoned (`deleted = false`) and one side completed (`completed = true`), the completed copy wins automatically (`auto_completed_local` increments `revision`; `auto_completed_remote` preserves the server row). True active divergence returns `409 Conflict` with the server snapshot (`serverSave`) so the user can choose which copy to keep without silent data loss.
+
+**D31. Append-only puzzle record log for stats (confirmed).** Per-puzzle attempt/completion records keyed by `(profileId, gameId, puzzleId)` sync as immutable monotonic logs (`started` -> `completed`, never downgraded; keeping earliest `started_at`; duplicate completions keep earliest `completed_at` with best `elapsed_ms` / `hints_used` tie-breakers) so win counts, averages, and daily streaks recompute losslessly across devices.
+
+**D32. Split preference sync (confirmed).** Per-profile gameplay settings (`flagDuplicateConflicts`, `flagWrongValues`) and visual theme/mode (`theme`, `mode`) sync via Last-Write-Wins (`updatedAt`). Device hardware audio settings (SFX/Music mute and volume sliders) remain strictly device-local and are excluded from server sync.
+
+**D33. Durable offline sync queue and triggers (confirmed).** IndexedDB tracks dirty save slots, unsynced puzzle records, and dirty preferences durably and flushes quietly on app startup, profile switch, reconnect (`online`), debounced moves, pause, completion, `visibilitychange` (`keepalive`), and manual **Sync Now**.
+
+**D34. First-link backfill (confirmed).** Linking an existing local profile to a household profile backfills its local completion history and active saves through the D30–D32 merge pipeline rather than discarding prior offline progress or silently overwriting remote saves.
+
 ## 4. Architecture
 
 ### 4.1 Client: PWA first
@@ -163,7 +173,7 @@ Each game provides: metadata, a serializable state schema, pure rules (a determi
 - Storage: Pure-Go SQLite (`modernc.org/sqlite`, `CGO_ENABLED=0`) with WAL mode and embedded transactional migrations to start (family scale); moving to Postgres stays possible.
 - Auth: Same-origin cookie sessions (`HttpOnly`, `Secure`, `SameSite=Lax`) for invite-only household accounts with Email + Password (Argon2id) or generic OpenID Connect (Discovery + PKCE); child profiles sit under a parent's household account (D9, D25, D27). Offline play never requires sign-in.
 - Puzzle service: puzzle bank, difficulty grading, daily schedule.
-- Sync: versioned per-game save blobs; stats merged from event logs; conflict rule agreed before Phase 5 builds it.
+- Sync: server-revisioned save slots with D30 conflict detection and completion auto-resolution, D31 monotonic per-puzzle record logs for lossless stats recomputation, and D32 LWW gameplay/theme preference sync (keeping audio device-local).
 - Leaderboards: per puzzle and per day; the server re-validates submitted solutions.
 - Multiplayer (later): authoritative Go game server over WebSockets with rooms.
 - Operations: runs on the Ubuntu home server with Docker Compose behind Traefik and HTTPS (D10, D16), rate limiting, backups with a tested restore, privacy-respecting logs, no analytics.
@@ -254,13 +264,13 @@ Exit met: Hearthside `v1.0.0` offline release ready across Windows, Linux, Andro
 
 Exit met: signed-in family members receive fresh puzzles and identical daily puzzles from the home server, local profiles link without losing saves or stats, and offline play works seamlessly with no network (Section 15).
 
-### Phase 5: Cloud save and stats sync
+### Phase 5: Cloud save and stats sync (In Progress)
 
-1. Versioned per-game save blobs and event-log merging, with a conflict rule agreed before building.
-2. Start a game on one device and resume it on another.
-3. Stats history stored per profile and synced.
+1. Run 1 (Completed): SQLite cloud sync schema (`0004_cloud_sync.sql`), household-scoped `services/api/internal/sync` service, authenticated REST sync endpoints with optimistic revisions, D30 completion auto-resolution, D31 monotonic record merge, D32 preference LWW, and `-race` integration tests.
+2. Run 2: Pure client merge & stats recomputation engine (`packages/game-core`, `games/sudoku`), IndexedDB v4 durable dirty queue (`serverRevisions`, `syncQueue`), API sync client helpers, background sync triggers (D33), and first-link backfill (D34).
+3. Run 3: Save conflict resolution modal UI, live cross-device resume indicators, Settings sync status, and two-device Playwright E2E verification.
 
-Exit: a game started on a laptop can be finished on a tablet, and offline play followed by sync loses no data.
+Exit: a game started on a laptop can be finished on a tablet, divergent active saves prompt cleanly without data loss, and offline play followed by sync loses no data (Section 16).
 
 ### Phase 6: Leaderboards and family features
 
@@ -515,6 +525,40 @@ Done when: online and offline devices play identical Daily Puzzles, local profil
 - [x] Run 3: Scheduled SQLite puzzle bank generation, `DailySeed` WASM parity, and authenticated puzzle/daily endpoints implemented and tested.
 - [x] Run 4: Same-origin API client, IndexedDB v3 linking/bank stores, Account & Household Settings UI, non-destructive local profile linking (D29), online sync with WASM fallback, and full-stack Playwright E2E verified.
 
-## 16. Next step
+## 16. Phase 5 in detail (Cloud save and stats sync)
 
-Start **Phase 5: Cloud save and stats sync** (versioned per-game save blobs, event-log stats merging, explicit conflict resolution rules, and cross-device resume while keeping offline-first play intact).
+Phase 5 adds multi-device cloud save slots, lossless stats history synchronization, and split gameplay/theme preference sync atop Phase 4 household accounts while keeping local-first offline playability intact.
+
+### 16.1 Run 1: SQLite sync schema, Go sync service, and HTTP API (Completed)
+
+1. Add forward-only SQLite migration `services/api/internal/db/migrations/0004_cloud_sync.sql` creating `game_saves` (monotonic `revision`, tombstones, conflict-picker summary metadata), `game_puzzle_records` (append/merge completion history), and `profile_preferences` (LWW theme/mode + JSON gameplay settings, excluding audio).
+2. Implement `services/api/internal/sync` with household-scoped profile authorization (returning `ErrNotFound` across households), `PullProfileSync` (with optional `gameId` and incremental `since`), `UpsertSave` (D30 fast-forward, completion auto-resolution, `409` `ConflictError`, `256 KiB` limit), `UpsertRecordsBatch` (D31 atomic idempotent monotonic merge up to 500 records), and `UpsertPreferences` (D32 LWW + audio key stripping).
+3. Wire authenticated + CSRF-protected endpoints in `services/api/internal/httpapi` (`GET /api/v1/sync/profiles/{profileId}`, `PUT /api/v1/sync/profiles/{profileId}/saves/{gameId}/{slot}`, `POST /api/v1/sync/profiles/{profileId}/records/batch`, `PUT /api/v1/sync/profiles/{profileId}/preferences`) and `cmd/server/main.go`, verified with `go vet`, `go test -race`, and `golangci-lint`.
+
+Done when: all sync unit and HTTP integration tests pass under `-race`, covering fast-forward revisions, tombstones, `409 Conflict` + `force` resolution, D30 completion auto-resolution, D31 record merges, D32 preference LWW, incremental pulls, and cross-household isolation.
+
+### 16.2 Run 2: Pure merge engine, IndexedDB v4 durable queue, and client sync service
+
+1. Implement pure TypeScript D30–D32 merge helpers and lossless Sudoku stats recomputation from merged puzzle records so offline history and cloud history reconcile identically.
+2. Upgrade `hearthside-db` to IndexedDB v4 with durable dirty-slot tracking, unsynced record queues, and server revision maps (D33), plus first-link backfill of local saves and completion records when linking a local profile (D34).
+3. Wire `apps/web` API sync calls and automatic non-blocking sync triggers (startup, profile switch, `online` reconnect, debounced moves, pause, completion, `visibilitychange` with `keepalive`, and manual Sync Now).
+
+Done when: offline progress, edits, and completions queue durably in IndexedDB, backfill cleanly upon profile linking, and sync automatically on reconnect or lifecycle events with all Vitest checks green.
+
+### 16.3 Run 3: Conflict resolution UI, cross-device resume UX, and two-device Playwright E2E
+
+1. Build accessible conflict-picker modal UI surfacing server vs. local summary metadata (`elapsedMs`, `filledCells`, `updatedAt`) when `409 Conflict` occurs, allowing keep-local (`force: true`), keep-server, or inspect actions.
+2. Add subtle sync status indicators in Settings / profile menu and seamless live reload/resume prompts when a newer save arrives from another device.
+3. Add a two-device Playwright E2E suite simulating independent browser contexts for the same household profile (fast-forward resume, D30 completion auto-resolve, `409` conflict resolution, D31 stats merge, D32 split preferences preserving device audio) and verify the full CI gate.
+
+Done when: a puzzle started on one browser context resumes on a second context, offline divergence prompts safely with zero silent data loss, and full Go + Web + Playwright E2E checks pass.
+
+### 16.4 Phase 5 exit checklist
+
+- [x] Run 1: SQLite `0004_cloud_sync.sql`, `services/api/internal/sync`, authenticated sync HTTP endpoints, ADRs D30–D34, and `-race` Go integration tests complete.
+- [ ] Run 2: Pure merge & stats recomputation engine, IndexedDB v4 durable offline queue (D33), first-link backfill (D34), and lifecycle sync triggers complete.
+- [ ] Run 3: Save conflict resolution modal UI, cross-device resume UX, and two-device Playwright E2E suite passing in CI.
+
+## 17. Next step
+
+Start **Phase 5, Run 2**: Pure merge engine, IndexedDB v4 durable sync queue (D33), first-link backfill (D34), and non-blocking lifecycle sync triggers in `packages/game-core`, `games/sudoku`, and `apps/web`.

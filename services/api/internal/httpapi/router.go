@@ -12,6 +12,7 @@ import (
 	"github.com/gemcdaniel/hearthside/services/api/internal/auth"
 	"github.com/gemcdaniel/hearthside/services/api/internal/config"
 	"github.com/gemcdaniel/hearthside/services/api/internal/puzzles"
+	cloudsync "github.com/gemcdaniel/hearthside/services/api/internal/sync"
 )
 
 const healthCheckTimeout = 2 * time.Second
@@ -22,6 +23,7 @@ type Dependencies struct {
 	Logger         *slog.Logger
 	Config         config.Config
 	Puzzles        *puzzles.Service
+	Sync           *cloudsync.Service
 	OIDCHTTPClient *http.Client
 	Now            func() time.Time
 }
@@ -47,10 +49,14 @@ func NewHandler(deps Dependencies) http.Handler {
 
 	var store *auth.Store
 	puzzleSvc := deps.Puzzles
+	syncSvc := deps.Sync
 	if deps.DB != nil {
 		store = auth.NewStore(deps.DB, deps.Now)
 		if puzzleSvc == nil {
 			puzzleSvc = puzzles.NewService(deps.DB, cfg.Puzzles, logger, deps.Now)
+		}
+		if syncSvc == nil {
+			syncSvc = cloudsync.NewService(deps.DB, deps.Now)
 		}
 	}
 	oidcClient := auth.NewOIDCClient(cfg.OIDC, cfg.PublicBaseURL, deps.OIDCHTTPClient)
@@ -81,6 +87,12 @@ func NewHandler(deps Dependencies) http.Handler {
 	mux.Handle("GET /api/v1/puzzles/daily", requireAuth(store, dailyPuzzleHandler(puzzleSvc, deps.Now, logger)))
 	mux.Handle("GET /api/v1/puzzles/bank", requireAuth(store, bankPuzzlesHandler(puzzleSvc, logger)))
 	mux.Handle("GET /api/v1/puzzles/{id}", requireAuth(store, getPuzzleByIDHandler(puzzleSvc, logger)))
+
+	// Authenticated household-scoped cloud sync routes (Phase 5).
+	mux.Handle("GET /api/v1/sync/profiles/{profileId}", requireAuth(store, pullProfileSyncHandler(syncSvc, logger)))
+	mux.Handle("PUT /api/v1/sync/profiles/{profileId}/saves/{gameId}/{slot}", requireAuth(store, upsertSaveHandler(syncSvc, logger)))
+	mux.Handle("POST /api/v1/sync/profiles/{profileId}/records/batch", requireAuth(store, upsertRecordsBatchHandler(syncSvc, logger)))
+	mux.Handle("PUT /api/v1/sync/profiles/{profileId}/preferences", requireAuth(store, upsertPreferencesHandler(syncSvc, logger)))
 
 	// Strict /api boundary so unmatched API paths never fall through to SPA index.html.
 	mux.HandleFunc("/api", apiNotFoundHandler)

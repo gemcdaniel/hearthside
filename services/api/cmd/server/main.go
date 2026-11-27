@@ -18,6 +18,7 @@ import (
 	"github.com/gemcdaniel/hearthside/services/api/internal/db"
 	"github.com/gemcdaniel/hearthside/services/api/internal/httpapi"
 	"github.com/gemcdaniel/hearthside/services/api/internal/puzzles"
+	cloudsync "github.com/gemcdaniel/hearthside/services/api/internal/sync"
 )
 
 const shutdownTimeout = 10 * time.Second
@@ -71,9 +72,11 @@ func run(ctx context.Context) error {
 	puzzleSvc.Start(ctx)
 	defer puzzleSvc.Wait()
 
+	syncSvc := cloudsync.NewService(database, nil)
+
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           httpapi.NewHandler(httpapi.Dependencies{DB: database, Logger: logger, Config: cfg, Puzzles: puzzleSvc}),
+		Handler:           httpapi.NewHandler(httpapi.Dependencies{DB: database, Logger: logger, Config: cfg, Puzzles: puzzleSvc, Sync: syncSvc}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,

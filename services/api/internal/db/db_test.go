@@ -47,8 +47,8 @@ func TestOpenPragmasAndMigrateIdempotent(t *testing.T) {
 	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&migrationCount); err != nil {
 		t.Fatalf("count schema_migrations failed: %v", err)
 	}
-	if migrationCount != 3 {
-		t.Fatalf("migrationCount = %d, want 3", migrationCount)
+	if migrationCount != 4 {
+		t.Fatalf("migrationCount = %d, want 4", migrationCount)
 	}
 
 	tables := []string{
@@ -63,6 +63,9 @@ func TestOpenPragmasAndMigrateIdempotent(t *testing.T) {
 		"puzzles",
 		"daily_puzzles",
 		"puzzle_generator_state",
+		"game_saves",
+		"game_puzzle_records",
+		"profile_preferences",
 	}
 	for _, table := range tables {
 		var name string

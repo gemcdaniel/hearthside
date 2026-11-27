@@ -1,4 +1,4 @@
-# Architecture Decision Records (D1–D29)
+# Architecture Decision Records (D1–D34)
 
 Decision log for Hearthside, derived from [docs/plan.md](../plan.md).
 
@@ -33,6 +33,11 @@ Decision log for Hearthside, derived from [docs/plan.md](../plan.md).
 | D27 | Invite-only Email & generic OIDC auth  | Confirmed                          | 2026-11-27 | [0027-invite-email-and-oidc-auth.md](./0027-invite-email-and-oidc-auth.md)           |
 | D28 | Daily puzzle seed parity with WASM     | Confirmed                          | 2026-11-27 | [0028-daily-puzzle-seed-parity.md](./0028-daily-puzzle-seed-parity.md)               |
 | D29 | Non-destructive local profile linking  | Confirmed                          | 2026-11-27 | [0029-local-profile-linking.md](./0029-local-profile-linking.md)                     |
+| D30 | Save slot conflict rule                | Confirmed                          | 2026-11-27 | [0030-save-slot-conflict-rule.md](./0030-save-slot-conflict-rule.md)                 |
+| D31 | Append-only puzzle record log          | Confirmed                          | 2026-11-27 | [0031-append-only-puzzle-record-log.md](./0031-append-only-puzzle-record-log.md)     |
+| D32 | Split preference sync                  | Confirmed                          | 2026-11-27 | [0032-split-preference-sync.md](./0032-split-preference-sync.md)                     |
+| D33 | Durable offline sync queue & triggers  | Confirmed                          | 2026-11-27 | [0033-durable-offline-sync-queue.md](./0033-durable-offline-sync-queue.md)           |
+| D34 | First-link backfill                    | Confirmed                          | 2026-11-27 | [0034-first-link-backfill.md](./0034-first-link-backfill.md)                         |
 
 ## Phase 0 Spike Reports
 
