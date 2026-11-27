@@ -155,15 +155,21 @@ describe('SudokuGame UI', () => {
       'true',
     );
 
-    // Toggle Auto-Show ON -> legal candidates appear and banner displays
-    fireEvent.click(screen.getByRole('button', { name: 'Auto-Show' }));
-    expect(
-      screen.getByText(/Auto-Show Candidates active — your manual notes stay preserved/),
-    ).toBeInTheDocument();
+    // Status rail is always present (no conditional Auto-Show banner above board)
+    const statusRail = screen.getByTestId('sudoku-status-rail');
+    expect(statusRail).toHaveAttribute('data-has-message', 'false');
+
+    // Toggle Auto-Show ON -> button reports aria-pressed=true, candidates appear, zero banner
+    const autoShowBtn = screen.getByRole('button', { name: 'Auto-Show' });
+    fireEvent.click(autoShowBtn);
+    expect(autoShowBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByText(/Auto-Show Candidates active/i)).not.toBeInTheDocument();
+    expect(statusRail).toHaveAttribute('data-has-message', 'false');
     expect(cell0!.querySelector('[data-note-digit="1"]')).toHaveAttribute('data-active', 'true');
 
     // Toggle Auto-Show OFF -> manual note 7 returns untouched while auto-show candidates vanish
-    fireEvent.click(screen.getByRole('button', { name: 'Auto-Show' }));
+    fireEvent.click(autoShowBtn);
+    expect(autoShowBtn).toHaveAttribute('aria-pressed', 'false');
     expect(cell0!.querySelector('[data-note-digit="7"]')).toHaveAttribute('data-active', 'true');
     expect(cell0!.querySelector('[data-note-digit="1"]')).toHaveAttribute('data-active', 'false');
   });
@@ -195,10 +201,12 @@ describe('SudokuGame UI', () => {
     expect(cell0).toHaveAttribute('data-conflict', 'false');
     expect(cell0).toHaveAttribute('data-wrong', 'false');
 
-    // Tapping Check Board transiently flags cell 0!
+    // Tapping Check Board transiently flags cell 0 inside the fixed status rail!
     fireEvent.click(screen.getByRole('button', { name: 'Check Board' }));
     expect(cell0).toHaveAttribute('data-wrong', 'true');
-    expect(screen.getByText('1 wrong entry highlighted.')).toBeInTheDocument();
+    const statusRail = screen.getByTestId('sudoku-status-rail');
+    expect(statusRail).toHaveAttribute('data-has-message', 'true');
+    expect(within(statusRail).getByText('1 wrong entry highlighted.')).toBeInTheDocument();
 
     // Entering the right digit 7 clears the check flag and plays place SFX
     fireEvent.click(screen.getByRole('button', { name: /Enter 7,/ }));

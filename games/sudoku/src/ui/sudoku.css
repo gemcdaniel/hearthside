@@ -1,94 +1,165 @@
 .hs-sudoku-root {
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+  max-width: 70rem;
+  margin: 0 auto;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: var(--hs-space-3);
+  gap: var(--hs-space-1);
 }
 
+.hs-sudoku-icon {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex-shrink: 0;
+}
+
+/* Slim single-row HUD (Paper-flat aesthetic) */
 .hs-sudoku-hud {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--hs-space-2);
-  padding: var(--hs-space-3);
-  background-color: var(--hs-surface);
-  border: 1px solid var(--hs-border);
-  border-radius: var(--hs-radius-md);
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 2px var(--hs-space-1);
 }
 
 .hs-sudoku-hud-group {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: var(--hs-space-2);
+}
+
+.hs-sudoku-hud-btn {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0 var(--hs-space-2);
+  border: 0;
+  border-radius: var(--hs-radius-pill);
+  background-color: transparent;
+  color: var(--hs-text);
+  font: inherit;
+  font-size: var(--hs-text-sm);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--hs-space-1);
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  transition: background-color var(--hs-motion-fast) ease-out;
+}
+
+.hs-sudoku-hud-btn:hover:not(:disabled) {
+  background-color: var(--hs-surface-elevated);
+}
+
+.hs-sudoku-hud-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.hs-sudoku-hud-btn:focus-visible {
+  outline: 3px solid var(--hs-focus-ring);
+  outline-offset: 2px;
+}
+
+.hs-sudoku-hud-label {
+  white-space: nowrap;
+}
+
+@media (max-width: 479px) {
+  .hs-sudoku-hud-label {
+    display: none;
+  }
+
+  .hs-sudoku-hud-btn {
+    padding: 0 var(--hs-space-1);
+    min-width: 40px;
+    min-height: 40px;
+  }
+}
+
+.hs-sudoku-diff-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem var(--hs-space-3);
+  border-radius: var(--hs-radius-pill);
+  background-color: var(--hs-surface-elevated);
+  color: var(--hs-text);
+  font-size: var(--hs-text-xs);
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .hs-sudoku-timer {
-  min-width: 3.5rem;
+  min-width: 3.25rem;
   text-align: center;
-  font-family: var(--hs-font-digits);
+  font-family: var(--hs-font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: var(--hs-text-lg);
-  font-weight: 700;
-  color: var(--hs-text);
-}
-
-.hs-sudoku-banner,
-.hs-sudoku-autoshow-banner {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--hs-space-2);
-  padding: var(--hs-space-2) var(--hs-space-3);
-  border-radius: var(--hs-radius-sm);
   font-size: var(--hs-text-sm);
   font-weight: 600;
-}
-
-.hs-sudoku-banner {
-  background-color: var(--hs-surface-elevated);
-  border: 1px solid var(--hs-border);
+  letter-spacing: 0.03em;
   color: var(--hs-text);
 }
 
-.hs-sudoku-autoshow-banner {
-  background-color: var(--hs-autoshow-bg);
-  border: 1px solid var(--hs-autoshow-border);
-  color: var(--hs-autoshow-text);
-}
-
+/* Main game workspace: Phone Portrait default */
 .hs-sudoku-workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--hs-space-4);
-  align-items: start;
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--hs-space-1);
 }
 
 .hs-sudoku-board-col {
+  width: 100%;
+  flex: 1 1 0;
+  min-height: 0;
   display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
+  gap: var(--hs-space-1);
 }
 
 .hs-sudoku-panel-col {
+  width: 100%;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--hs-space-3);
 }
 
 .hs-sudoku-frame {
-  width: min(100%, 34rem);
-  border: 3px solid var(--hs-grid-box-line);
+  --hs-board-size: min(100%, calc(100dvh - 270px), 460px);
+  width: var(--hs-board-size);
+  max-width: 100%;
+  aspect-ratio: 1 / 1;
+  border: 2.5px solid var(--hs-grid-box-line);
   border-radius: var(--hs-radius-board);
   overflow: hidden;
   background-color: var(--hs-cell-bg);
   box-shadow: var(--hs-shadow-board);
+  flex-shrink: 0;
 }
 
 .hs-sudoku-stage {
   position: relative;
   width: 100%;
+  height: 100%;
   aspect-ratio: 1 / 1;
+  container-type: inline-size;
 }
 
 .hs-sudoku-grid {
@@ -121,7 +192,7 @@
   touch-action: manipulation;
   display: grid;
   place-items: center;
-  transition: background-color var(--hs-motion-fast) ease;
+  transition: background-color var(--hs-motion-fast) ease-out;
 }
 
 .hs-sudoku-cell[data-given='true'] {
@@ -140,12 +211,12 @@
 
 .hs-sudoku-cell[data-highlight='same-digit'] {
   background-color: var(--hs-cell-same-digit-bg);
-  box-shadow: inset 0 0 0 2px var(--hs-cell-same-digit-border);
+  box-shadow: inset 0 0 0 1.5px var(--hs-cell-same-digit-border);
 }
 
 .hs-sudoku-cell[data-highlight='selected'] {
   background-color: var(--hs-cell-selected-bg);
-  box-shadow: inset 0 0 0 3px var(--hs-cell-selected-border);
+  box-shadow: inset 0 0 0 2.5px var(--hs-cell-selected-border);
 }
 
 .hs-sudoku-cell[data-wrong='true'] {
@@ -158,7 +229,7 @@
 .hs-sudoku-cell[data-conflict='true'] {
   background-color: var(--hs-cell-conflict-bg);
   color: var(--hs-cell-conflict-text);
-  box-shadow: inset 0 0 0 3px var(--hs-cell-conflict-border);
+  box-shadow: inset 0 0 0 2.5px var(--hs-cell-conflict-border);
 }
 
 .hs-sudoku-cell:focus-visible {
@@ -167,7 +238,7 @@
 }
 
 .hs-sudoku-digit {
-  font-size: clamp(1.1rem, 4.2vw, 1.85rem);
+  font-size: clamp(1rem, 5.8cqi, 2.25rem);
   line-height: 1;
   pointer-events: none;
 }
@@ -184,7 +255,7 @@
 .hs-sudoku-note {
   display: grid;
   place-items: center;
-  font-size: clamp(0.5rem, 1.5vw, 0.72rem);
+  font-size: clamp(0.48rem, 2.15cqi, 0.78rem);
   line-height: 1;
   font-weight: 600;
   color: var(--hs-cell-notes-text);
@@ -230,17 +301,19 @@
 
 .hs-sudoku-line-cell {
   stroke: var(--hs-grid-line);
-  stroke-width: 1.5;
+  stroke-width: 1;
   vector-effect: non-scaling-stroke;
 }
 
 .hs-sudoku-line-box {
   stroke: var(--hs-grid-box-line);
-  stroke-width: 3;
+  stroke-width: 2.25;
   vector-effect: non-scaling-stroke;
 }
 
-.hs-sudoku-curtain {
+/* Pause curtain + non-shifting board stage overlays */
+.hs-sudoku-curtain,
+.hs-sudoku-overlay {
   position: absolute;
   inset: 0;
   z-index: 3;
@@ -254,12 +327,21 @@
   text-align: center;
 }
 
+.hs-sudoku-overlay {
+  z-index: 4;
+}
+
+.hs-sudoku-overlay-solved {
+  background-color: var(--hs-success-bg);
+  color: var(--hs-success-text);
+}
+
 .hs-sudoku-curtain-title {
   margin: 0;
   font-family: var(--hs-font-heading);
   font-size: var(--hs-text-xl);
   font-weight: 700;
-  color: var(--hs-text);
+  color: inherit;
 }
 
 .hs-sudoku-curtain-subtitle {
@@ -268,55 +350,166 @@
   color: var(--hs-text-muted);
 }
 
+.hs-sudoku-complete-time {
+  margin: 0;
+  font-size: var(--hs-text-base);
+  font-weight: 600;
+}
+
+/* Permanent fixed-height 32px status rail below the board (zero layout shift) */
+.hs-sudoku-status-rail {
+  width: 100%;
+  max-width: 40rem;
+  height: 32px;
+  min-height: 32px;
+  max-height: 32px;
+  flex-shrink: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--hs-space-2);
+  padding: 0 var(--hs-space-2);
+  border-radius: var(--hs-radius-sm);
+  color: var(--hs-status-rail-text);
+  font-size: var(--hs-text-xs);
+  font-weight: 600;
+}
+
+.hs-sudoku-status-rail[data-has-message='true'] {
+  background-color: var(--hs-status-rail-bg);
+}
+
+.hs-sudoku-status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hs-sudoku-status-dismiss {
+  flex-shrink: 0;
+  min-height: 24px;
+  padding: 0 var(--hs-space-2);
+  border: 1px solid var(--hs-border);
+  border-radius: var(--hs-radius-pill);
+  background-color: var(--hs-surface);
+  color: var(--hs-text);
+  font: inherit;
+  font-size: var(--hs-text-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hs-sudoku-status-dismiss:focus-visible {
+  outline: 2px solid var(--hs-focus-ring);
+  outline-offset: 1px;
+}
+
+/* Controls: Portrait unboxed single-row action bar + horizontal 1-9 strip */
 .hs-sudoku-controls {
   display: flex;
   flex-direction: column;
-  gap: var(--hs-space-3);
-}
-
-.hs-sudoku-actions {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
   gap: var(--hs-space-2);
 }
 
+.hs-sudoku-actions {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 2px;
+}
+
 .hs-sudoku-tool-btn {
-  min-height: 44px;
-  padding: 0 var(--hs-space-2);
-  border: 1px solid var(--hs-control-border);
-  border-radius: var(--hs-radius-sm);
-  background-color: var(--hs-control-bg);
-  color: var(--hs-text);
+  position: relative;
+  flex: 1 1 0;
+  min-height: 48px;
+  min-width: 0;
+  padding: var(--hs-space-1) 2px;
+  border: 1px solid transparent;
+  border-radius: var(--hs-radius-md);
+  background-color: transparent;
+  color: var(--hs-text-muted);
   font: inherit;
-  font-size: var(--hs-text-sm);
+  font-size: 0.6875rem;
   font-weight: 600;
   cursor: pointer;
   user-select: none;
   touch-action: manipulation;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
   transition:
-    background-color var(--hs-motion-fast) ease,
-    border-color var(--hs-motion-fast) ease;
+    background-color var(--hs-motion-fast) ease-out,
+    color var(--hs-motion-fast) ease-out;
 }
 
 .hs-sudoku-tool-btn:hover:not(:disabled) {
-  background-color: var(--hs-control-hover);
+  background-color: var(--hs-surface-tile);
+  color: var(--hs-text);
 }
 
 .hs-sudoku-tool-btn[aria-pressed='true'] {
-  background-color: var(--hs-accent);
-  border-color: var(--hs-accent);
-  color: var(--hs-accent-contrast);
+  background-color: var(--hs-surface-elevated);
+  border-color: var(--hs-border);
+  color: var(--hs-text);
+}
+
+.hs-sudoku-autoshow-btn {
+  flex: 0 0 auto;
+  padding-inline: var(--hs-space-2);
+  border-radius: var(--hs-radius-pill);
 }
 
 .hs-sudoku-autoshow-btn[aria-pressed='true'] {
   background-color: var(--hs-autoshow-bg);
   border-color: var(--hs-autoshow-border);
   color: var(--hs-autoshow-text);
-  box-shadow: inset 0 0 0 1px var(--hs-autoshow-border);
+}
+
+.hs-autoshow-icon-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hs-autoshow-dot {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--hs-radius-pill);
+  background-color: var(--hs-autoshow-dot);
+  opacity: 0;
+  transition: opacity var(--hs-motion-fast) ease-out;
+}
+
+.hs-sudoku-autoshow-btn[aria-pressed='true'] .hs-autoshow-dot {
+  opacity: 1;
+}
+
+.hs-sudoku-tool-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  line-height: 1.1;
+}
+
+.hs-sudoku-label-full {
+  display: none;
+}
+
+.hs-sudoku-kbd {
+  display: none;
 }
 
 .hs-sudoku-tool-btn:disabled {
-  opacity: 0.55;
+  opacity: 0.42;
   cursor: not-allowed;
 }
 
@@ -332,12 +525,12 @@
 }
 
 .hs-sudoku-num-btn {
-  min-height: 48px;
+  min-height: 52px;
   min-width: 0;
-  padding: var(--hs-space-1);
-  border: 1px solid var(--hs-control-border);
-  border-radius: var(--hs-radius-sm);
-  background-color: var(--hs-surface);
+  padding: var(--hs-space-1) 2px;
+  border: 1px solid transparent;
+  border-radius: var(--hs-radius-md);
+  background-color: var(--hs-surface-tile);
   color: var(--hs-text);
   font-family: var(--hs-font-digits);
   font-variant-numeric: tabular-nums;
@@ -349,19 +542,19 @@
   align-items: center;
   justify-content: center;
   gap: 2px;
-  transition: background-color var(--hs-motion-fast) ease;
+  transition: background-color var(--hs-motion-fast) ease-out;
 }
 
 .hs-sudoku-num-btn:hover:not(:disabled) {
-  background-color: var(--hs-control-hover);
+  background-color: var(--hs-surface-tile-hover);
 }
 
 .hs-sudoku-num-btn[data-depleted='true'] {
-  opacity: 0.5;
+  opacity: 0.38;
 }
 
 .hs-sudoku-num-btn:disabled {
-  opacity: 0.45;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
@@ -371,46 +564,188 @@
 }
 
 .hs-sudoku-num-digit {
-  font-size: var(--hs-text-lg);
+  font-size: clamp(1.25rem, 4.5vw, 1.85rem);
   font-weight: 700;
-  line-height: 1.1;
+  line-height: 1;
 }
 
 .hs-sudoku-num-remaining {
-  font-size: var(--hs-text-xs);
+  font-size: 0.65rem;
+  font-weight: 600;
   color: var(--hs-text-muted);
   line-height: 1;
 }
 
-.hs-sudoku-complete-card {
-  padding: var(--hs-space-4);
-  background-color: var(--hs-success-bg);
-  color: var(--hs-success-text);
-  border: 2px solid currentColor;
-  border-radius: var(--hs-radius-md);
-  display: flex;
-  flex-direction: column;
-  gap: var(--hs-space-3);
-}
+/* Tablet Portrait (600px - 959px): Centered stack, <= 640px board, >= 52px touch/S Pen targets */
+@media (min-width: 600px) and (max-width: 959px) {
+  .hs-sudoku-hud,
+  .hs-sudoku-board-col,
+  .hs-sudoku-panel-col {
+    max-width: 40rem;
+    width: 100%;
+    margin: 0 auto;
+  }
 
-.hs-sudoku-complete-time {
-  margin: 0;
-  font-size: var(--hs-text-base);
-  font-weight: 600;
-}
+  .hs-sudoku-frame {
+    --hs-board-size: min(100%, 40rem, calc(100dvh - 300px));
+  }
 
-@media (min-width: 840px) {
-  .hs-sudoku-workspace {
-    grid-template-columns: minmax(0, 34rem) minmax(16rem, 1fr);
-    gap: var(--hs-space-5);
+  .hs-sudoku-tool-btn {
+    min-height: 54px;
+    font-size: var(--hs-text-xs);
+  }
+
+  .hs-sudoku-num-btn {
+    min-height: 60px;
+  }
+
+  .hs-sudoku-actions {
+    gap: var(--hs-space-1);
   }
 
   .hs-sudoku-numpad {
+    gap: var(--hs-space-2);
+  }
+}
+
+/* Tablet Landscape & Desktop / 4K (>= 960px wide, >= 541px tall) */
+@media (min-width: 960px) and (min-height: 541px) {
+  .hs-sudoku-root {
+    gap: var(--hs-space-2);
+  }
+
+  .hs-sudoku-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 20.5rem;
+    gap: var(--hs-space-6);
+    align-items: center;
+    justify-content: center;
+  }
+
+  .hs-sudoku-frame {
+    --hs-board-size: min(100%, 40rem, calc(100dvh - 188px));
+  }
+
+  .hs-sudoku-panel-col {
+    width: 20.5rem;
+  }
+
+  .hs-sudoku-controls {
+    gap: var(--hs-space-4);
+  }
+
+  /* Stitch Desktop order: 3x3 calculator pad above 2-col action grid */
+  .hs-sudoku-numpad {
+    order: 1;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--hs-space-2);
   }
 
   .hs-sudoku-num-btn {
-    min-height: 56px;
+    min-height: 64px;
+    padding: var(--hs-space-2);
   }
+
+  .hs-sudoku-num-digit {
+    font-size: 1.75rem;
+  }
+
+  .hs-sudoku-num-remaining {
+    font-size: var(--hs-text-xs);
+  }
+
+  .hs-sudoku-actions {
+    order: 2;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--hs-space-2);
+  }
+
+  .hs-sudoku-autoshow-btn {
+    flex: initial;
+    padding-inline: var(--hs-space-3);
+  }
+
+  .hs-sudoku-tool-btn {
+    flex-direction: row;
+    justify-content: center;
+    gap: var(--hs-space-2);
+    min-height: 46px;
+    padding: var(--hs-space-2) var(--hs-space-3);
+    background-color: var(--hs-surface-tile);
+    color: var(--hs-text);
+    font-size: var(--hs-text-sm);
+  }
+
+  .hs-sudoku-tool-btn:hover:not(:disabled) {
+    background-color: var(--hs-surface-tile-hover);
+  }
+
+  .hs-sudoku-label-short {
+    display: none;
+  }
+
+  .hs-sudoku-label-full {
+    display: inline;
+  }
+
+  .hs-sudoku-hint-btn {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Desktop keyboard shortcut hints on hover-capable fine-pointer devices only */
+@media (min-width: 960px) and (min-height: 541px) and (hover: hover) and (pointer: fine) {
+  .hs-sudoku-kbd {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 5px;
+    border-radius: 4px;
+    border: 1px solid var(--hs-kbd-border);
+    background-color: var(--hs-kbd-bg);
+    color: var(--hs-kbd-text);
+    font-family: var(--hs-font-mono);
+    font-size: 0.65rem;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+}
+
+/* Phone Landscape Guard: Clean overlay instead of squeezing an unplayable board */
+.hs-sudoku-rotate-guard {
+  display: none;
+}
+
+@media (orientation: landscape) and (max-height: 540px) {
+  .hs-sudoku-rotate-guard {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background-color: var(--hs-bg);
+    color: var(--hs-text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--hs-space-4);
+  }
+}
+
+.hs-sudoku-rotate-card {
+  max-width: 24rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--hs-space-3);
+  padding: var(--hs-space-5);
+  border-radius: var(--hs-radius-lg);
+  background-color: var(--hs-surface);
+  border: 1px solid var(--hs-border);
+}
+
+.hs-sudoku-rotate-card .hs-sudoku-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  color: var(--hs-accent);
+  transform: rotate(90deg);
 }

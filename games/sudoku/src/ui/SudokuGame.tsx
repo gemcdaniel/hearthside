@@ -18,6 +18,7 @@ import { getStarterPuzzle, pickNextStarterPuzzle } from '../engine/starterBank';
 import type { SudokuDifficulty, SudokuState } from '../engine/types';
 import { SudokuBoard } from './SudokuBoard';
 import { SudokuControls } from './SudokuControls';
+import { BackIcon, NewPuzzleIcon, PauseIcon, PlayIcon, RotatePhoneIcon } from './SudokuIcons';
 import { formatElapsedTime } from './formatTime';
 import './sudoku.css';
 
@@ -483,16 +484,60 @@ export function SudokuGame({ services, initialMode }: SudokuGameProps) {
   const selectedCellObj = state.selectedCell !== null ? state.cells[state.selectedCell] : undefined;
   const canEraseSelected = Boolean(selectedCellObj && !selectedCellObj.given);
 
+  const stageOverlay = confirmNewPuzzle ? (
+    <div className="hs-sudoku-overlay" role="alert" aria-label="Start new puzzle confirmation">
+      <p className="hs-sudoku-curtain-title">New Puzzle?</p>
+      <p className="hs-sudoku-curtain-subtitle">
+        Start a fresh {formatDifficultyLabel(difficulty)} puzzle?
+      </p>
+      <div className="hs-btn-group">
+        <button type="button" className="hs-btn hs-btn-primary" onClick={startNewPuzzle}>
+          Start New
+        </button>
+        <button
+          type="button"
+          className="hs-btn hs-btn-secondary"
+          onClick={() => setConfirmNewPuzzle(false)}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  ) : state.completed ? (
+    <section
+      className="hs-sudoku-overlay hs-sudoku-overlay-solved"
+      role="status"
+      aria-label="Puzzle solved"
+    >
+      <h2 className="hs-sudoku-curtain-title">Puzzle Solved!</h2>
+      <p className="hs-sudoku-complete-time">
+        {formatDifficultyLabel(difficulty)} completed in {formatElapsedTime(state.elapsedMs)}.
+      </p>
+      <div className="hs-btn-group">
+        <button type="button" className="hs-btn hs-btn-primary" onClick={startNewPuzzle}>
+          New Game
+        </button>
+        <button type="button" className="hs-btn hs-btn-secondary" onClick={handleExit}>
+          Return to Library
+        </button>
+      </div>
+    </section>
+  ) : null;
+
   return (
     <div className="hs-sudoku-root">
-      <div className="hs-sudoku-hud">
+      <header className="hs-sudoku-hud">
         <div className="hs-sudoku-hud-group">
-          <button type="button" className="hs-btn hs-btn-secondary" onClick={handleExit}>
-            Back to Library
+          <button
+            type="button"
+            className="hs-sudoku-hud-btn"
+            aria-label="Back to Library"
+            onClick={handleExit}
+          >
+            <BackIcon />
+            <span className="hs-sudoku-hud-label">Library</span>
           </button>
-          <span className="hs-badge" data-tone="success">
-            {formatDifficultyLabel(difficulty)}
-          </span>
+          <span className="hs-sudoku-diff-pill">{formatDifficultyLabel(difficulty)}</span>
         </div>
 
         <div className="hs-sudoku-hud-group">
@@ -504,61 +549,25 @@ export function SudokuGame({ services, initialMode }: SudokuGameProps) {
           </span>
           <button
             type="button"
-            className="hs-btn hs-btn-secondary"
+            className="hs-sudoku-hud-btn"
+            aria-label={state.paused ? 'Resume' : 'Pause'}
             disabled={state.completed}
             onClick={handleTogglePause}
           >
-            {state.paused ? 'Resume' : 'Pause'}
+            {state.paused ? <PlayIcon /> : <PauseIcon />}
+            <span className="hs-sudoku-hud-label">{state.paused ? 'Resume' : 'Pause'}</span>
           </button>
           <button
             type="button"
-            className="hs-btn hs-btn-secondary"
+            className="hs-sudoku-hud-btn"
+            aria-label="New Puzzle"
             onClick={handleRequestNewPuzzle}
           >
-            New Puzzle
+            <NewPuzzleIcon />
+            <span className="hs-sudoku-hud-label">New</span>
           </button>
         </div>
-      </div>
-
-      {confirmNewPuzzle ? (
-        <div className="hs-sudoku-banner" role="alert">
-          <span>Start a fresh {formatDifficultyLabel(difficulty)} puzzle?</span>
-          <div className="hs-btn-group">
-            <button type="button" className="hs-btn hs-btn-primary" onClick={startNewPuzzle}>
-              Start New
-            </button>
-            <button
-              type="button"
-              className="hs-btn hs-btn-secondary"
-              onClick={() => setConfirmNewPuzzle(false)}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {state.autoShowEnabled ? (
-        <div className="hs-sudoku-autoshow-banner" role="status">
-          Auto-Show Candidates active — your manual notes stay preserved in memory.
-        </div>
-      ) : null}
-
-      {checkMessage ? (
-        <div className="hs-sudoku-banner" aria-live="polite">
-          <span>{checkMessage}</span>
-          <button
-            type="button"
-            className="hs-btn hs-btn-secondary"
-            onClick={() => {
-              setCheckMessage(null);
-              setState((prev) => reduceSudoku(prev, sudokuActions.clearCheckBoard()));
-            }}
-          >
-            Dismiss
-          </button>
-        </div>
-      ) : null}
+      </header>
 
       <div className="hs-sudoku-workspace">
         <div className="hs-sudoku-board-col">
@@ -568,17 +577,41 @@ export function SudokuGame({ services, initialMode }: SudokuGameProps) {
             flagWrongValues={services.settings.sudoku.flagWrongValues}
             onSelectCell={handleSelectCell}
             onResume={handleTogglePause}
+            stageOverlay={stageOverlay}
           />
+
+          <div
+            className="hs-sudoku-status-rail"
+            data-testid="sudoku-status-rail"
+            data-has-message={checkMessage ? 'true' : 'false'}
+            aria-live="polite"
+          >
+            {checkMessage ? (
+              <>
+                <span className="hs-sudoku-status-text">{checkMessage}</span>
+                <button
+                  type="button"
+                  className="hs-sudoku-status-dismiss"
+                  onClick={() => {
+                    setCheckMessage(null);
+                    setState((prev) => reduceSudoku(prev, sudokuActions.clearCheckBoard()));
+                  }}
+                >
+                  Dismiss
+                </button>
+              </>
+            ) : null}
+          </div>
         </div>
 
-        <div className="hs-sudoku-panel-col">
+        <aside className="hs-sudoku-panel-col" aria-label="Puzzle controls">
           <SudokuControls
             canUndo={canUndo(state)}
             canRedo={canRedo(state)}
             notesMode={state.notesMode}
             autoShowEnabled={state.autoShowEnabled}
             canErase={canEraseSelected}
-            disabled={state.paused || state.completed}
+            disabled={state.paused || state.completed || confirmNewPuzzle}
             remainingCounts={remainingCounts}
             onUndo={handleUndo}
             onRedo={handleRedo}
@@ -588,24 +621,24 @@ export function SudokuGame({ services, initialMode }: SudokuGameProps) {
             onCheckBoard={handleCheckBoard}
             onDigitInput={handleDigitInput}
           />
+        </aside>
+      </div>
 
-          {state.completed ? (
-            <section className="hs-sudoku-complete-card" role="status" aria-label="Puzzle solved">
-              <h2 className="hs-section-title">Puzzle Solved!</h2>
-              <p className="hs-sudoku-complete-time">
-                {formatDifficultyLabel(difficulty)} completed in{' '}
-                {formatElapsedTime(state.elapsedMs)}.
-              </p>
-              <div className="hs-btn-group">
-                <button type="button" className="hs-btn hs-btn-primary" onClick={startNewPuzzle}>
-                  New Game
-                </button>
-                <button type="button" className="hs-btn hs-btn-secondary" onClick={handleExit}>
-                  Back to Library
-                </button>
-              </div>
-            </section>
-          ) : null}
+      <div
+        className="hs-sudoku-rotate-guard"
+        data-testid="phone-landscape-guard"
+        role="region"
+        aria-label="Rotate device"
+      >
+        <div className="hs-sudoku-rotate-card">
+          <RotatePhoneIcon />
+          <p className="hs-sudoku-curtain-title">Rotate to portrait to play</p>
+          <p className="hs-sudoku-curtain-subtitle">
+            Sudoku is designed for portrait comfort on compact phone screens.
+          </p>
+          <button type="button" className="hs-btn hs-btn-secondary" onClick={handleExit}>
+            Return to Library
+          </button>
         </div>
       </div>
     </div>

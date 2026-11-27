@@ -131,4 +131,18 @@ describe('Hearthside AIO Shell', () => {
       within(p1Dialog).getByLabelText('Flag wrong values live (kid-friendly)'),
     ).not.toBeChecked();
   });
+
+  it('keeps SFX active while marking Background music as disabled for Phase 3', async () => {
+    render(<App />);
+    await screen.findByText('Welcome, Player 1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    const dialog = await screen.findByRole('dialog', { name: /Settings/ });
+
+    expect(within(dialog).getByLabelText('Sound effects (SFX)')).toBeEnabled();
+    expect(within(dialog).getByLabelText(/SFX volume/)).toBeEnabled();
+    expect(within(dialog).getByLabelText('Background music')).toBeDisabled();
+    expect(within(dialog).getByLabelText(/Music volume/)).toBeDisabled();
+    expect(within(dialog).getByText('Coming in Phase 3')).toBeInTheDocument();
+  });
 });

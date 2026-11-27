@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { BOARD_SIZE, COL_OF, GRID_SIZE, ROW_OF, hasDigitBit } from '../engine/boardMath';
 import {
   getDuplicateConflicts,
@@ -18,6 +19,7 @@ export interface SudokuBoardProps {
   readonly flagWrongValues: boolean;
   readonly onSelectCell: (cell: number) => void;
   readonly onResume: () => void;
+  readonly stageOverlay?: ReactNode;
 }
 
 export function SudokuBoard({
@@ -26,6 +28,7 @@ export function SudokuBoard({
   flagWrongValues,
   onSelectCell,
   onResume,
+  stageOverlay,
 }: SudokuBoardProps) {
   const highlights = getHighlightMap(state);
   const peerSet = new Set(highlights.peers);
@@ -223,6 +226,8 @@ export function SudokuBoard({
             </button>
           </div>
         ) : null}
+
+        {stageOverlay ?? null}
       </div>
     </div>
   );

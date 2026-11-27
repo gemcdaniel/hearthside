@@ -225,7 +225,7 @@ export function App() {
   }
 
   return (
-    <div className="hs-shell">
+    <div className="hs-shell" data-view={activeLaunch ? 'game' : 'library'}>
       <ShellHeader
         profiles={profiles}
         activeProfile={activeProfile}

@@ -845,9 +845,18 @@ body {
   gap: var(--hs-space-2);
 }
 
+.hs-setting-row[data-disabled='true'] {
+  opacity: 0.68;
+}
+
+.hs-setting-row[data-disabled='true'] .hs-checkbox-label {
+  cursor: not-allowed;
+}
+
 .hs-checkbox-label {
   min-height: 44px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--hs-space-2);
   font-size: var(--hs-text-sm);
@@ -866,6 +875,83 @@ body {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--hs-space-3);
+}
+
+/* Zero-scroll 100dvh lock for active game view */
+.hs-shell[data-view='game'] {
+  height: 100dvh;
+  max-height: 100dvh;
+  max-width: 100%;
+  overflow: hidden;
+  padding: var(--hs-space-1) var(--hs-space-3) var(--hs-space-2);
+  gap: var(--hs-space-1);
+}
+
+.hs-shell[data-view='game'] .hs-header {
+  width: 100%;
+  max-width: 70rem;
+  margin: 0 auto;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  padding-bottom: var(--hs-space-1);
+  gap: var(--hs-space-2);
+}
+
+.hs-shell[data-view='game'] .hs-brand {
+  min-width: 0;
+}
+
+.hs-shell[data-view='game'] .hs-brand-btn {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.hs-shell[data-view='game'] .hs-title {
+  font-size: var(--hs-text-lg);
+}
+
+.hs-shell[data-view='game'] .hs-subtitle {
+  display: none;
+}
+
+.hs-shell[data-view='game'] .hs-header-actions {
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
+.hs-shell[data-view='game'] .hs-header-actions .hs-btn {
+  min-height: 36px;
+}
+
+@media (max-width: 480px) {
+  .hs-shell[data-view='game'] .hs-profile-trigger-name {
+    max-width: 5rem;
+  }
+}
+
+.hs-shell[data-view='game'] .hs-main {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  gap: 0;
+}
+
+.hs-game-host {
+  flex: 1 1 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 960px) {
+  .hs-shell[data-view='game'] {
+    padding: var(--hs-space-2) var(--hs-space-5) var(--hs-space-3);
+    gap: var(--hs-space-2);
+  }
 }
 
 .hs-diagnostics-drawer {

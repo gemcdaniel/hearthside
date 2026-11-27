@@ -1,3 +1,13 @@
+import {
+  AutoShowIcon,
+  CheckIcon,
+  EraseIcon,
+  HintIcon,
+  NotesIcon,
+  RedoIcon,
+  UndoIcon,
+} from './SudokuIcons';
+
 const PAD_DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
 
 export interface SudokuControlsProps {
@@ -39,68 +49,102 @@ export function SudokuControls({
         <button
           type="button"
           className="hs-sudoku-tool-btn"
+          aria-label="Undo"
           disabled={disabled || !canUndo}
           onClick={onUndo}
         >
-          Undo
+          <UndoIcon />
+          <span className="hs-sudoku-tool-label">Undo</span>
+          <span className="hs-sudoku-kbd" aria-hidden="true">
+            Ctrl+Z
+          </span>
         </button>
 
         <button
           type="button"
           className="hs-sudoku-tool-btn"
+          aria-label="Redo"
           disabled={disabled || !canRedo}
           onClick={onRedo}
         >
-          Redo
+          <RedoIcon />
+          <span className="hs-sudoku-tool-label">Redo</span>
+          <span className="hs-sudoku-kbd" aria-hidden="true">
+            Ctrl+Y
+          </span>
         </button>
 
         <button
           type="button"
           className="hs-sudoku-tool-btn"
+          aria-label="Erase"
           disabled={disabled || !canErase}
           onClick={onErase}
         >
-          Erase
+          <EraseIcon />
+          <span className="hs-sudoku-tool-label">Erase</span>
+          <span className="hs-sudoku-kbd" aria-hidden="true">
+            Del
+          </span>
         </button>
 
         <button
           type="button"
           className="hs-sudoku-tool-btn"
+          aria-label="Notes"
           aria-pressed={notesMode}
           disabled={disabled}
           onClick={onToggleNotesMode}
         >
-          Notes
+          <NotesIcon />
+          <span className="hs-sudoku-tool-label">Notes</span>
+          <span className="hs-sudoku-kbd" aria-hidden="true">
+            N
+          </span>
         </button>
 
         <button
           type="button"
           className="hs-sudoku-tool-btn hs-sudoku-autoshow-btn"
+          aria-label="Auto-Show"
           aria-pressed={autoShowEnabled}
           disabled={disabled}
-          title="Show legal candidates (your manual notes are preserved in memory)"
+          title="Show legal candidates (your manual notes stay preserved in memory)"
           onClick={onToggleAutoShow}
         >
-          Auto-Show
+          <span className="hs-autoshow-icon-wrap">
+            <AutoShowIcon />
+            <span className="hs-autoshow-dot" aria-hidden="true" />
+          </span>
+          <span className="hs-sudoku-tool-label">Auto-Show</span>
+          <span className="hs-sudoku-kbd" aria-hidden="true">
+            A
+          </span>
         </button>
 
         <button
           type="button"
           className="hs-sudoku-tool-btn"
+          aria-label="Check Board"
           disabled={disabled}
           onClick={onCheckBoard}
         >
-          Check Board
+          <CheckIcon />
+          <span className="hs-sudoku-tool-label">
+            <span className="hs-sudoku-label-short">Check</span>
+            <span className="hs-sudoku-label-full">Check Board</span>
+          </span>
         </button>
 
         <button
           type="button"
-          className="hs-sudoku-tool-btn"
+          className="hs-sudoku-tool-btn hs-sudoku-hint-btn"
           disabled
           aria-label="Hint (coming in Run 4)"
           title="4-tier WASM hints arrive in Run 4"
         >
-          Hint
+          <HintIcon />
+          <span className="hs-sudoku-tool-label">Hint</span>
         </button>
       </div>
 

@@ -115,7 +115,7 @@ D1 to D24 are confirmed unless noted as Proposed.
 
 **D23. Local profiles in offline v1 (confirmed).** Lightweight same-device profiles consisting of a display name and preset avatar icon/color (no PIN required in offline v1). Each profile isolates in-progress games, stats, theme/mode selection, and gameplay settings (including D21 toggles), with a quick switcher in the shell header.
 
-**D24. Audio rollout (confirmed).** Phase 2 implements the full audio service (independent SFX and Music mute/volume toggles, unlocked on first pointer gesture) with crisp Web Audio synthesized SFX (tap, place, note, erase, conflict, completion). Background music tracks are added during Phase 3 polish.
+**D24. Audio rollout (confirmed).** Phase 2 implements the full audio service (independent SFX and Music mute/volume toggles, unlocked on first pointer gesture) with crisp Web Audio synthesized SFX (tap, place, note, erase, conflict, completion). Background music tracks are added during Phase 3 polish; until then, the Settings modal clearly marks Background Music controls as disabled with a "Coming in Phase 3" badge.
 
 ## 4. Architecture
 

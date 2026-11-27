@@ -48,7 +48,7 @@ export function GameHost({
   };
 
   return (
-    <section aria-label={entry.metadata.name}>
+    <section className="hs-game-host" aria-label={entry.metadata.name}>
       <GameComponent
         key={`${activeProfile.id}:${gameId}:${initialMode ?? ''}`}
         services={services}
