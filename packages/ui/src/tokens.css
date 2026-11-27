@@ -12,6 +12,21 @@
   --hs-control-border: #64748b;
   --hs-shadow-board: 0 2px 10px rgba(15, 23, 42, 0.08);
   --hs-shadow-banner: 0 8px 24px rgba(15, 23, 42, 0.16);
+  --hs-backdrop: rgba(15, 23, 42, 0.55);
+
+  /* Profile avatar accents */
+  --hs-avatar-cobalt-bg: #dbeafe;
+  --hs-avatar-cobalt-fg: #1e3a8a;
+  --hs-avatar-terracotta-bg: #ffedd5;
+  --hs-avatar-terracotta-fg: #7c2d12;
+  --hs-avatar-forest-bg: #dcfce7;
+  --hs-avatar-forest-fg: #14532d;
+  --hs-avatar-plum-bg: #f3e8ff;
+  --hs-avatar-plum-fg: #581c87;
+  --hs-avatar-amber-bg: #fef3c7;
+  --hs-avatar-amber-fg: #78350f;
+  --hs-avatar-teal-bg: #ccfbf1;
+  --hs-avatar-teal-fg: #134e4a;
 
   /* Sudoku grid & cell states */
   --hs-grid-line: #94a3b8;
@@ -90,6 +105,20 @@
   --hs-control-border: #64748b;
   --hs-shadow-board: 0 2px 14px rgba(0, 0, 0, 0.45);
   --hs-shadow-banner: 0 8px 28px rgba(0, 0, 0, 0.55);
+  --hs-backdrop: rgba(2, 6, 23, 0.72);
+
+  --hs-avatar-cobalt-bg: #1e3a8a;
+  --hs-avatar-cobalt-fg: #dbeafe;
+  --hs-avatar-terracotta-bg: #7c2d12;
+  --hs-avatar-terracotta-fg: #ffedd5;
+  --hs-avatar-forest-bg: #14532d;
+  --hs-avatar-forest-fg: #dcfce7;
+  --hs-avatar-plum-bg: #581c87;
+  --hs-avatar-plum-fg: #f3e8ff;
+  --hs-avatar-amber-bg: #78350f;
+  --hs-avatar-amber-fg: #fef3c7;
+  --hs-avatar-teal-bg: #134e4a;
+  --hs-avatar-teal-fg: #ccfbf1;
 
   --hs-grid-line: #475569;
   --hs-grid-box-line: #e2e8f0;
@@ -134,6 +163,20 @@
   --hs-control-border: #7c6551;
   --hs-shadow-board: 0 4px 14px rgba(62, 43, 29, 0.12);
   --hs-shadow-banner: 0 8px 24px rgba(62, 43, 29, 0.22);
+  --hs-backdrop: rgba(43, 30, 22, 0.55);
+
+  --hs-avatar-cobalt-bg: #dbeafe;
+  --hs-avatar-cobalt-fg: #1e3a8a;
+  --hs-avatar-terracotta-bg: #ffedd5;
+  --hs-avatar-terracotta-fg: #7c2d12;
+  --hs-avatar-forest-bg: #dcfce7;
+  --hs-avatar-forest-fg: #14532d;
+  --hs-avatar-plum-bg: #f3e8ff;
+  --hs-avatar-plum-fg: #581c87;
+  --hs-avatar-amber-bg: #fef3c7;
+  --hs-avatar-amber-fg: #78350f;
+  --hs-avatar-teal-bg: #ccfbf1;
+  --hs-avatar-teal-fg: #134e4a;
 
   --hs-grid-line: #b8a48d;
   --hs-grid-box-line: #3e2b1d;
@@ -186,6 +229,20 @@
   --hs-control-border: #8a7164;
   --hs-shadow-board: 0 4px 16px rgba(0, 0, 0, 0.5);
   --hs-shadow-banner: 0 8px 28px rgba(0, 0, 0, 0.6);
+  --hs-backdrop: rgba(10, 8, 6, 0.74);
+
+  --hs-avatar-cobalt-bg: #1e3a8a;
+  --hs-avatar-cobalt-fg: #dbeafe;
+  --hs-avatar-terracotta-bg: #7c2d12;
+  --hs-avatar-terracotta-fg: #ffedd5;
+  --hs-avatar-forest-bg: #14532d;
+  --hs-avatar-forest-fg: #dcfce7;
+  --hs-avatar-plum-bg: #581c87;
+  --hs-avatar-plum-fg: #f3e8ff;
+  --hs-avatar-amber-bg: #78350f;
+  --hs-avatar-amber-fg: #fef3c7;
+  --hs-avatar-teal-bg: #134e4a;
+  --hs-avatar-teal-fg: #ccfbf1;
 
   --hs-grid-line: #634f45;
   --hs-grid-box-line: #efe3d3;

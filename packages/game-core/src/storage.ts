@@ -1,0 +1,43 @@
+export interface SaveEnvelope<TPayload = unknown> {
+  readonly schemaVersion: number;
+  readonly profileId: string;
+  readonly gameId: string;
+  readonly slot: string;
+  readonly updatedAt: string;
+  readonly payload: TPayload;
+}
+
+export interface BaseGameStats {
+  readonly gamesStarted: number;
+  readonly gamesWon: number;
+  readonly totalPlayMs: number;
+}
+
+export interface GameStatsRecord<TStats = unknown> {
+  readonly schemaVersion: number;
+  readonly profileId: string;
+  readonly gameId: string;
+  readonly updatedAt: string;
+  readonly stats: TStats;
+}
+
+export interface CompletedPuzzleRecord {
+  readonly profileId: string;
+  readonly gameId: string;
+  readonly puzzleId: string;
+  readonly difficulty?: string;
+  readonly completedAt: string;
+  readonly elapsedMs: number;
+  readonly hintsUsed: number;
+}
+
+export interface GameStorageService {
+  loadSave<TPayload = unknown>(slot: string): Promise<SaveEnvelope<TPayload> | null>;
+  saveGame<TPayload = unknown>(envelope: SaveEnvelope<TPayload>): Promise<void>;
+  deleteSave(slot: string): Promise<void>;
+  listSaves(): Promise<readonly SaveEnvelope[]>;
+  loadStats<TStats = unknown>(): Promise<GameStatsRecord<TStats> | null>;
+  saveStats<TStats = unknown>(record: GameStatsRecord<TStats>): Promise<void>;
+  recordCompletedPuzzle(record: CompletedPuzzleRecord): Promise<void>;
+  listCompletedPuzzles(): Promise<readonly CompletedPuzzleRecord[]>;
+}
