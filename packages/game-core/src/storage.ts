@@ -58,3 +58,13 @@ export interface GameStorageService {
   loadCachedPuzzle<TPuzzle = unknown>(cacheKey: string): Promise<TPuzzle | null>;
   saveCachedPuzzle<TPuzzle = unknown>(cacheKey: string, puzzle: TPuzzle): Promise<void>;
 }
+
+/** Optional online/cache sync adapter provided by the host shell without coupling games to HTTP APIs. */
+export interface PuzzleSyncService {
+  fetchDailyPuzzle<TPuzzle = unknown>(dateKey: string, difficulty: string): Promise<TPuzzle | null>;
+  pickCachedBankPuzzle<TPuzzle = unknown>(
+    difficulty: string,
+    excludeIds: ReadonlySet<string>,
+  ): Promise<TPuzzle | null>;
+  requestBankTopUp?(difficulty: string, excludeIds: ReadonlySet<string>): Promise<void>;
+}

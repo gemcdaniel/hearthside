@@ -331,6 +331,21 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
         return fromBank;
       }
 
+      if (servicesRef.current.puzzleSync) {
+        try {
+          const fromServerBank =
+            await servicesRef.current.puzzleSync.pickCachedBankPuzzle<PuzzleRecord>(
+              difficulty,
+              excludeIds,
+            );
+          if (fromServerBank && !excludeIds.has(fromServerBank.id)) {
+            return fromServerBank;
+          }
+        } catch {
+          // Fall through seamlessly to local WASM overflow generation.
+        }
+      }
+
       for (let attempt = 0; attempt < 10; attempt += 1) {
         const seed = computeOverflowSeed(difficulty, overflowCountRef.current);
         overflowCountRef.current += 1;
@@ -385,6 +400,22 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
           if (!active) {
             return;
           }
+          if (!puzzle && services.puzzleSync) {
+            try {
+              puzzle = await services.puzzleSync.fetchDailyPuzzle<PuzzleRecord>(
+                dailyDate,
+                difficulty,
+              );
+              if (!active) {
+                return;
+              }
+              if (puzzle) {
+                await services.storage.saveCachedPuzzle(cacheKey, puzzle);
+              }
+            } catch {
+              puzzle = null;
+            }
+          }
           if (!puzzle) {
             const seed = computeDailySeed(dailyDate, difficulty);
             puzzle = await wasmRef.current.generatePuzzle(seed, difficulty);
@@ -399,6 +430,8 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
           void incrementStartedStats();
           return;
         }
+
+        void services.puzzleSync?.requestBankTopUp?.(difficulty, completedSet);
 
         const bankPuzzle = pickNextStarterPuzzle(difficulty, completedSet);
         if (bankPuzzle) {

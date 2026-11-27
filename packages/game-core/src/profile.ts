@@ -31,6 +31,12 @@ export interface Profile {
   readonly avatarId: AvatarId;
   readonly accentColor: ProfileAccentId;
   readonly createdAt: string;
+  /** Optional Phase 4+ linked server household profile ID (omitted for local-only profiles). */
+  readonly remoteProfileId?: string;
+  /** Optional Phase 4+ linked server household ID. */
+  readonly householdId?: string;
+  /** True when linked to a login-free household child profile (D9). */
+  readonly isChild?: boolean;
 }
 
 export interface SudokuProfileSettings {

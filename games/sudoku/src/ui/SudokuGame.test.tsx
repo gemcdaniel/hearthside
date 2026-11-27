@@ -531,4 +531,55 @@ describe('SudokuGame UI', () => {
     await screen.findByRole('grid', { name: '9 by 9 Sudoku board' });
     expect(generateSpy).toHaveBeenCalledTimes(1);
   });
+
+  it('uses server puzzleSync for uncached Daily before falling back to local WASM', async () => {
+    const serverDailyPuzzle: PuzzleRecord = {
+      ...getStarterPuzzle('easy', 0),
+      id: 'server-daily-2026-11-28',
+    };
+    const fetchDailyPuzzle = vi.fn(async () => serverDailyPuzzle as unknown);
+    const generateSpy = vi.fn(async () => getStarterPuzzle('easy', 1));
+    const wasmClient = createMockWasmClient({ generatePuzzle: generateSpy });
+    const services: ShellServices = {
+      ...createTestServices(),
+      puzzleSync: {
+        fetchDailyPuzzle: fetchDailyPuzzle as ShellServices['puzzleSync'] extends infer T
+          ? T extends { fetchDailyPuzzle: infer F }
+            ? F
+            : never
+          : never,
+        pickCachedBankPuzzle: vi.fn(async () => null),
+      },
+    };
+
+    const view = render(
+      <SudokuGame
+        services={services}
+        initialMode="daily:2026-11-28:easy"
+        wasmClient={wasmClient}
+      />,
+    );
+    await screen.findByRole('grid', { name: '9 by 9 Sudoku board' });
+    expect(fetchDailyPuzzle).toHaveBeenCalledWith('2026-11-28', 'easy');
+    expect(generateSpy).not.toHaveBeenCalled();
+
+    // Cached server daily puzzle stays available offline even if puzzleSync returns null next time.
+    view.unmount();
+    const offlineServices: ShellServices = {
+      ...services,
+      puzzleSync: {
+        fetchDailyPuzzle: vi.fn(async () => null),
+        pickCachedBankPuzzle: vi.fn(async () => null),
+      },
+    };
+    render(
+      <SudokuGame
+        services={offlineServices}
+        initialMode="daily:2026-11-28:easy"
+        wasmClient={wasmClient}
+      />,
+    );
+    await screen.findByRole('grid', { name: '9 by 9 Sudoku board' });
+    expect(generateSpy).not.toHaveBeenCalled();
+  });
 });

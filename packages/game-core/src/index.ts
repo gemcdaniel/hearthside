@@ -35,6 +35,7 @@ export type {
   CompletedPuzzleRecord,
   GameStatsRecord,
   GameStorageService,
+  PuzzleSyncService,
   SaveEnvelope,
   SaveSlotSummary,
 } from './storage';

@@ -2,6 +2,7 @@ import type { AudioService, Profile, ProfileSettings } from '@hearthside/game-co
 import { useMemo } from 'react';
 import { shellGameRegistry } from '../games/shellRegistry';
 import { createGameStorageService } from '../storage/hearthsideDb';
+import { createShellPuzzleSync } from '../sync/puzzleSync';
 
 interface GameHostProps {
   readonly gameId: string;
@@ -9,6 +10,7 @@ interface GameHostProps {
   readonly activeProfile: Profile;
   readonly settings: ProfileSettings;
   readonly audio: AudioService;
+  readonly isSignedIn?: boolean;
   readonly onExitToLibrary: () => void;
 }
 
@@ -18,6 +20,7 @@ export function GameHost({
   activeProfile,
   settings,
   audio,
+  isSignedIn = false,
   onExitToLibrary,
 }: GameHostProps) {
   const entry = shellGameRegistry.get(gameId);
@@ -26,6 +29,7 @@ export function GameHost({
     () => createGameStorageService(activeProfile.id, gameId),
     [activeProfile.id, gameId],
   );
+  const puzzleSync = useMemo(() => createShellPuzzleSync(isSignedIn), [isSignedIn]);
 
   if (!entry) {
     return (
@@ -44,6 +48,7 @@ export function GameHost({
     settings,
     storage,
     audio,
+    puzzleSync,
     onExitToLibrary,
   };
 

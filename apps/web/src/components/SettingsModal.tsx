@@ -18,6 +18,7 @@ import {
   type FormEvent,
   type RefObject,
 } from 'react';
+import type { AuthProvidersInfo, AuthSessionPayload, RemoteHouseholdProfile } from '../api/types';
 import type { StoragePersistenceStatus } from '../diagnostics/indexedDb';
 import { getAppTitle, getAppVersion } from '../appInfo';
 import { shellGameRegistry } from '../games/shellRegistry';
@@ -27,6 +28,7 @@ import {
   importAllData,
   requestStoragePersistence,
 } from '../storage/hearthsideDb';
+import { AccountHouseholdSection, type AccountBackendState } from './AccountHouseholdSection';
 import { ProfileAvatar } from './ProfileAvatar';
 
 const LazyDiagnosticsPanel = lazy(() =>
@@ -51,6 +53,21 @@ interface SettingsModalProps {
   readonly onDeleteProfile: (profileId: string) => Promise<void>;
   readonly onUpdateSettings: (next: ProfileSettings) => void;
   readonly onDataImported: () => Promise<void>;
+  readonly session: AuthSessionPayload | null;
+  readonly providers: AuthProvidersInfo | null;
+  readonly backendState: AccountBackendState;
+  readonly cachedBankCount: number;
+  readonly pendingInviteToken?: string | null;
+  readonly onRefreshAccountStatus: () => Promise<void>;
+  readonly onSessionChanged: (next: AuthSessionPayload | null) => Promise<void>;
+  readonly onLinkLocalProfile: (
+    localProfileId: string,
+    remote: RemoteHouseholdProfile,
+  ) => Promise<void>;
+  readonly onUnlinkLocalProfile: (localProfileId: string) => Promise<void>;
+  readonly onAddRemoteProfileToDevice: (remote: RemoteHouseholdProfile) => Promise<void>;
+  readonly onSyncNow: () => Promise<void>;
+  readonly onClearPendingInvite: () => void;
 }
 
 function formatPersistenceLabel(status: StoragePersistenceStatus | 'checking'): string {
@@ -80,6 +97,18 @@ export function SettingsModal({
   onDeleteProfile,
   onUpdateSettings,
   onDataImported,
+  session,
+  providers,
+  backendState,
+  cachedBankCount,
+  pendingInviteToken,
+  onRefreshAccountStatus,
+  onSessionChanged,
+  onLinkLocalProfile,
+  onUnlinkLocalProfile,
+  onAddRemoteProfileToDevice,
+  onSyncNow,
+  onClearPendingInvite,
 }: SettingsModalProps) {
   const [newName, setNewName] = useState('');
   const [newAvatar, setNewAvatar] = useState<AvatarId>('star');
@@ -262,6 +291,22 @@ export function SettingsModal({
         </div>
 
         <div className="hs-modal-body">
+          <AccountHouseholdSection
+            session={session}
+            providers={providers}
+            backendState={backendState}
+            cachedBankCount={cachedBankCount}
+            localProfiles={profiles}
+            initialInviteToken={pendingInviteToken}
+            onRefreshStatus={onRefreshAccountStatus}
+            onSessionChanged={onSessionChanged}
+            onLinkLocalProfile={onLinkLocalProfile}
+            onUnlinkLocalProfile={onUnlinkLocalProfile}
+            onAddRemoteProfileToDevice={onAddRemoteProfileToDevice}
+            onSyncNow={onSyncNow}
+            onClearPendingInvite={onClearPendingInvite}
+          />
+
           <section className="hs-settings-section" aria-label="Local Profiles">
             <h3 className="hs-settings-heading">Local Profiles</h3>
             <div className="hs-profile-list">

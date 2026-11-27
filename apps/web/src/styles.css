@@ -248,6 +248,10 @@ body {
 }
 
 .hs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
   min-height: 44px;
   padding: 0 var(--hs-space-3);
   border-radius: var(--hs-radius-sm);
@@ -987,4 +991,49 @@ body {
   outline: 3px solid var(--hs-focus-ring);
   outline-offset: 2px;
   border-radius: var(--hs-radius-sm);
+}
+
+.hs-settings-subheading {
+  margin: 0;
+  font-family: var(--hs-font-heading);
+  font-size: var(--hs-text-sm);
+  font-weight: 700;
+  color: var(--hs-text);
+}
+
+.hs-account-panel,
+.hs-account-subsection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hs-space-3);
+}
+
+.hs-account-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hs-space-1);
+}
+
+.hs-account-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--hs-space-2);
+}
+
+.hs-account-meta {
+  margin: 0;
+  font-size: var(--hs-text-xs);
+  color: var(--hs-text-muted);
+}
+
+.hs-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--hs-space-3);
+}
+
+.hs-input-grow {
+  flex: 1 1 14rem;
+  min-width: 0;
 }

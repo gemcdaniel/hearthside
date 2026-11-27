@@ -1,6 +1,6 @@
 import type { AudioService } from './audio';
 import type { Profile, ProfileSettings } from './profile';
-import type { GameStorageService, SaveSlotSummary } from './storage';
+import type { GameStorageService, PuzzleSyncService, SaveSlotSummary } from './storage';
 
 export type GameCategory = 'puzzle' | 'card' | 'board' | 'arcade';
 
@@ -54,6 +54,7 @@ export interface ShellServices {
   readonly settings: ProfileSettings;
   readonly storage: GameStorageService;
   readonly audio: AudioService;
+  readonly puzzleSync?: PuzzleSyncService;
   readonly onExitToLibrary: () => void;
 }
 

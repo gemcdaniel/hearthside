@@ -1,8 +1,8 @@
-# Hearthside: Project Plan v1.1 (Phase 4 Backend Foundation)
+# Hearthside: Project Plan v1.2 (Phase 4 Complete)
 
-Version 1.1, November 27, 2026. Status legend: **Confirmed** means locked by the project owner; **Proposed** means recommended default awaiting confirmation if changes are needed; **Open** means unresolved.
+Version 1.2, November 27, 2026. Status legend: **Confirmed** means locked by the project owner; **Proposed** means recommended default awaiting confirmation if changes are needed; **Open** means unresolved.
 
-Version 1.1 begins **Phase 4 (Backend foundation on the home server)** atop the shipped offline-first `v1.0.0` PWA release, specifying the pure-Go SQLite API architecture (`modernc.org/sqlite`), invite-only Email + Password (Argon2id) and generic OpenID Connect (Discovery + PKCE) household accounts, scheduled puzzle bank replenishment, and deterministic daily puzzle delivery (D25–D29).
+Version 1.2 completes **Phase 4 (Backend foundation on the home server)** atop the offline-first `v1.0.0` PWA release: single-container Go + `/srv/web` serving behind Traefik, pure-Go SQLite with embedded migrations, invite-only Email + Password (Argon2id) and generic OIDC Discovery + PKCE accounts, child profiles (D9), background puzzle bank replenishment + canonical `DailySeed` parity (D28), PWA Account & Household UI with non-destructive local profile linking (D29), and full-stack Playwright E2E verification.
 
 ## 1. Vision and scope
 
@@ -245,14 +245,14 @@ Exit met: complete offline Sudoku playable across desktop and mobile profiles wi
 
 Exit met: Hearthside `v1.0.0` offline release ready across Windows, Linux, Android, and desktop/mobile PWA with zero critical/serious axe violations and all offline/WASM/E2E checks green (Section 14).
 
-### Phase 4: Backend foundation on the home server (Active — Run 1)
+### Phase 4: Backend foundation on the home server (Completed)
 
 1. Run 1: Single-container Go API skeleton (`cmd/server`, `internal/config`, `internal/db`, `internal/httpapi`), pure-Go SQLite + embedded migrations, `GET /api/v1/healthz`, static PWA + pre-compressed `.gz` serving (`HEARTHSIDE_WEB_DIR=/srv/web`), Workbox `/api` denylist + Vite dev proxy, unified `Dockerfile`, and Docker Compose + Traefik routing (D25–D26).
-2. Run 2: Household accounts, invite CLI/tokens, Email + Password (Argon2id), generic OIDC Discovery + PKCE, session cookies, and child profile management (D9, D27).
-3. Run 3: Server puzzle bank service + scheduled Go engine generation/grading and PWA online bank replenishment.
-4. Run 4: Deterministic Daily Puzzle service (`(YYYY-MM-DD, difficulty, engineVersion)` parity per D28), client sign-in + non-destructive local profile linking UI (D29), and deployment ops runbook.
+2. Run 2: Household accounts, single-use invites, Email + Password (Argon2id), generic OIDC Discovery + PKCE, session cookies, CSRF origin checks, and child profile management (D9, D27).
+3. Run 3: Server puzzle bank service + scheduled Go engine replenishment, canonical `DailySeed` parity, and authenticated puzzle/daily endpoints (D28).
+4. Run 4: Typed same-origin API client, IndexedDB v3 sync stores, Account & Household Settings UI, non-destructive local profile linking (D29), online Daily/Bank sync with WASM fallback, and full-stack Playwright E2E + CI integration.
 
-Exit: signed-in family members receive fresh puzzles and the daily puzzle from the home server, local profiles link without data loss, and offline play still works with no network (Section 15).
+Exit met: signed-in family members receive fresh puzzles and identical daily puzzles from the home server, local profiles link without losing saves or stats, and offline play works seamlessly with no network (Section 15).
 
 ### Phase 5: Cloud save and stats sync
 
@@ -508,13 +508,13 @@ Done when: server-served puzzles replenish online client banks while offline cli
 
 Done when: online and offline devices play identical Daily Puzzles, local profiles link without losing saves/stats, and backup/restore + full CI/E2E gates pass.
 
-### 15.5 Phase 4 exit checklist
+### 15.5 Phase 4 exit checklist (Completed)
 
 - [x] Run 1: Single-container Go API skeleton (`cmd/server`, `config`, `db`, `httpapi`), `GET /api/v1/healthz`, `HEARTHSIDE_WEB_DIR=/srv/web` static PWA + `.gz` serving, Workbox `/api` denylist, unified `Dockerfile`, and Compose/Traefik routing verified.
 - [x] Run 2: Invite-only Email + Argon2id, generic OIDC Discovery + PKCE, session cookies, and household child profiles implemented and tested.
 - [x] Run 3: Scheduled SQLite puzzle bank generation, `DailySeed` WASM parity, and authenticated puzzle/daily endpoints implemented and tested.
-- [ ] Run 4: Client online puzzle bank top-up / Daily Puzzle sync, non-destructive local profile linking UI (D29), and SQLite backup/restore runbook verified.
+- [x] Run 4: Same-origin API client, IndexedDB v3 linking/bank stores, Account & Household Settings UI, non-destructive local profile linking (D29), online sync with WASM fallback, and full-stack Playwright E2E verified.
 
 ## 16. Next step
 
-Continue **Phase 4, Run 4** (Wire online PWA puzzle bank top-up and Daily Puzzle fetch with local caching, build optional Sign-In & non-destructive local profile linking UI per D29, and document SQLite backup/restore operations).
+Start **Phase 5: Cloud save and stats sync** (versioned per-game save blobs, event-log stats merging, explicit conflict resolution rules, and cross-device resume while keeping offline-first play intact).

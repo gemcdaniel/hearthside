@@ -20,7 +20,7 @@ import { getSystemThemeMode } from '@hearthside/ui';
 export { getStoragePersistenceStatus, requestStoragePersistence } from '../diagnostics/indexedDb';
 
 export const HEARTHSIDE_DB_NAME = 'hearthside-db';
-export const HEARTHSIDE_DB_VERSION = 2;
+export const HEARTHSIDE_DB_VERSION = 3;
 export const EXPORT_SCHEMA_VERSION = 1;
 export const DEFAULT_PROFILE_ID = 'profile-default-1';
 export const DEFAULT_PROFILE_NAME = 'Player 1';
@@ -32,6 +32,26 @@ const STORE_SAVES = 'saves';
 const STORE_STATS = 'stats';
 const STORE_COMPLETED = 'completedPuzzles';
 const STORE_DAILY_PUZZLES = 'dailyPuzzles';
+const STORE_SERVER_PUZZLE_BANK = 'serverPuzzleBank';
+const STORE_SERVER_SYNC_META = 'serverSyncMeta';
+
+export interface ServerBankPuzzleRecord {
+  readonly id: string;
+  readonly seed: number;
+  readonly engineVersion: string;
+  readonly difficulty: 'easy' | 'medium' | 'hard';
+  readonly techniquesRequired: readonly string[];
+  readonly clues: string;
+  readonly solution: string;
+  readonly seq: number;
+  readonly cachedAt?: string;
+}
+
+export interface ServerSyncMetaRecord {
+  readonly difficulty: 'easy' | 'medium' | 'hard';
+  readonly lastSeq: number;
+  readonly lastSyncedAt: string;
+}
 
 const ALL_STORES = [
   STORE_PROFILES,
@@ -123,6 +143,15 @@ export function openHearthsideDb(): Promise<IDBDatabase> {
           keyPath: ['gameId', 'cacheKey'],
         });
       }
+      if (!db.objectStoreNames.contains(STORE_SERVER_PUZZLE_BANK)) {
+        const bank = db.createObjectStore(STORE_SERVER_PUZZLE_BANK, { keyPath: 'id' });
+        bank.createIndex('by_difficulty', 'difficulty', { unique: false });
+        bank.createIndex('by_difficulty_seq', ['difficulty', 'seq'], { unique: false });
+        bank.createIndex('by_seq', 'seq', { unique: false });
+      }
+      if (!db.objectStoreNames.contains(STORE_SERVER_SYNC_META)) {
+        db.createObjectStore(STORE_SERVER_SYNC_META, { keyPath: 'difficulty' });
+      }
     };
 
     request.onsuccess = () => {
@@ -201,7 +230,10 @@ function isProfile(value: unknown): value is Profile {
     isNonEmptyString(value.name) &&
     isAvatarId(value.avatarId) &&
     isProfileAccentId(value.accentColor) &&
-    isNonEmptyString(value.createdAt)
+    isNonEmptyString(value.createdAt) &&
+    (value.remoteProfileId === undefined || typeof value.remoteProfileId === 'string') &&
+    (value.householdId === undefined || typeof value.householdId === 'string') &&
+    (value.isChild === undefined || typeof value.isChild === 'boolean')
   );
 }
 
@@ -416,6 +448,9 @@ export interface CreateProfileInput {
   readonly avatarId?: AvatarId;
   readonly accentColor?: ProfileAccentId;
   readonly settings?: ProfileSettings;
+  readonly remoteProfileId?: string;
+  readonly householdId?: string;
+  readonly isChild?: boolean;
 }
 
 export async function createProfile(input: CreateProfileInput): Promise<Profile> {
@@ -430,6 +465,9 @@ export async function createProfile(input: CreateProfileInput): Promise<Profile>
     avatarId: input.avatarId ?? 'hearth',
     accentColor: input.accentColor ?? 'cobalt',
     createdAt: new Date().toISOString(),
+    ...(input.remoteProfileId ? { remoteProfileId: input.remoteProfileId } : {}),
+    ...(input.householdId ? { householdId: input.householdId } : {}),
+    ...(input.isChild !== undefined ? { isChild: input.isChild } : {}),
   };
   const settings = input.settings ?? createDefaultProfileSettings(getSystemThemeMode());
 
@@ -441,6 +479,120 @@ export async function createProfile(input: CreateProfileInput): Promise<Profile>
   });
 
   return profile;
+}
+
+export interface RemoteProfileLinkTarget {
+  readonly id: string;
+  readonly householdId: string;
+  readonly name: string;
+  readonly avatarId: string;
+  readonly accentColor: string;
+  readonly isChild: boolean;
+}
+
+/**
+ * Links an existing local profile to a remote household profile without deleting
+ * or overwriting local saves, settings, stats, or completed puzzles (D29).
+ */
+export async function linkLocalProfileToRemote(
+  localProfileId: string,
+  remote: Pick<RemoteProfileLinkTarget, 'id' | 'householdId' | 'isChild'>,
+): Promise<Profile> {
+  return withDb(async (db) => {
+    const tx = db.transaction(STORE_PROFILES, 'readwrite');
+    const store = tx.objectStore(STORE_PROFILES);
+    const existing: unknown = await requestToPromise(
+      store.get(localProfileId),
+      'Failed to load profile for linking.',
+    );
+    if (!isProfile(existing)) {
+      throw new Error(`Profile "${localProfileId}" does not exist.`);
+    }
+
+    const updated: Profile = {
+      ...existing,
+      remoteProfileId: remote.id,
+      householdId: remote.householdId,
+      isChild: remote.isChild,
+    };
+    store.put(updated);
+    await transactionDone(tx, 'Link local profile');
+    return updated;
+  });
+}
+
+/**
+ * Clears remote household link metadata from a local profile while keeping all
+ * local saves, settings, and stats untouched (D29).
+ */
+export async function unlinkLocalProfile(localProfileId: string): Promise<Profile> {
+  return withDb(async (db) => {
+    const tx = db.transaction(STORE_PROFILES, 'readwrite');
+    const store = tx.objectStore(STORE_PROFILES);
+    const existing: unknown = await requestToPromise(
+      store.get(localProfileId),
+      'Failed to load profile for unlinking.',
+    );
+    if (!isProfile(existing)) {
+      throw new Error(`Profile "${localProfileId}" does not exist.`);
+    }
+
+    const updated: Profile = {
+      id: existing.id,
+      name: existing.name,
+      avatarId: existing.avatarId,
+      accentColor: existing.accentColor,
+      createdAt: existing.createdAt,
+    };
+    store.put(updated);
+    await transactionDone(tx, 'Unlink local profile');
+    return updated;
+  });
+}
+
+/**
+ * Adds a household profile to this device as a new pre-linked local profile.
+ * Child profiles default `flagWrongValues` to ON for kid-friendly play (D9/D21).
+ */
+export async function addRemoteProfileToDevice(
+  remote: RemoteProfileLinkTarget,
+  defaultMode: 'light' | 'dark' = getSystemThemeMode(),
+): Promise<{
+  readonly profile: Profile;
+  readonly settings: ProfileSettings;
+  readonly created: boolean;
+}> {
+  const existingProfiles = await listProfiles();
+  const alreadyLinked = existingProfiles.find((p) => p.remoteProfileId === remote.id);
+  if (alreadyLinked) {
+    const existingSettings = await getProfileSettings(alreadyLinked.id);
+    return { profile: alreadyLinked, settings: existingSettings, created: false };
+  }
+
+  const avatarId: AvatarId = isAvatarId(remote.avatarId) ? remote.avatarId : 'hearth';
+  const accentColor: ProfileAccentId = isProfileAccentId(remote.accentColor)
+    ? remote.accentColor
+    : 'cobalt';
+  const baseSettings = createDefaultProfileSettings(defaultMode);
+  const settings: ProfileSettings = {
+    ...baseSettings,
+    sudoku: {
+      ...baseSettings.sudoku,
+      flagWrongValues: remote.isChild ? true : baseSettings.sudoku.flagWrongValues,
+    },
+  };
+
+  const profile = await createProfile({
+    name: remote.name,
+    avatarId,
+    accentColor,
+    settings,
+    remoteProfileId: remote.id,
+    householdId: remote.householdId,
+    isChild: remote.isChild,
+  });
+
+  return { profile, settings, created: true };
 }
 
 export interface UpdateProfileInput {
@@ -693,6 +845,91 @@ export async function putCachedPuzzle<TPuzzle = unknown>(
     };
     tx.objectStore(STORE_DAILY_PUZZLES).put(entry);
     await transactionDone(tx, 'Cache puzzle record');
+  });
+}
+
+export async function putServerBankPuzzles(
+  difficulty: 'easy' | 'medium' | 'hard',
+  items: readonly ServerBankPuzzleRecord[],
+  nextSeq: number,
+): Promise<void> {
+  const now = new Date().toISOString();
+  await withDb(async (db) => {
+    const tx = db.transaction([STORE_SERVER_PUZZLE_BANK, STORE_SERVER_SYNC_META], 'readwrite');
+    const bankStore = tx.objectStore(STORE_SERVER_PUZZLE_BANK);
+    for (const item of items) {
+      bankStore.put({
+        ...item,
+        difficulty,
+        cachedAt: item.cachedAt ?? now,
+      });
+    }
+    const meta: ServerSyncMetaRecord = {
+      difficulty,
+      lastSeq: nextSeq,
+      lastSyncedAt: now,
+    };
+    tx.objectStore(STORE_SERVER_SYNC_META).put(meta);
+    await transactionDone(tx, 'Store server puzzle bank batch');
+  });
+}
+
+export async function listServerBankPuzzles<TPuzzle = ServerBankPuzzleRecord>(
+  difficulty: 'easy' | 'medium' | 'hard',
+): Promise<TPuzzle[]> {
+  return withDb(async (db) => {
+    const tx = db.transaction(STORE_SERVER_PUZZLE_BANK, 'readonly');
+    const index = tx.objectStore(STORE_SERVER_PUZZLE_BANK).index('by_difficulty_seq');
+    const range = IDBKeyRange.bound([difficulty, 0], [difficulty, Number.MAX_SAFE_INTEGER]);
+    const raw = (await requestToPromise(
+      index.getAll(range),
+      'Failed to list cached server bank puzzles.',
+    )) as unknown[];
+    return raw.filter(isRecord) as unknown as TPuzzle[];
+  });
+}
+
+export async function getServerSyncMeta(
+  difficulty: 'easy' | 'medium' | 'hard',
+): Promise<ServerSyncMetaRecord | null> {
+  return withDb(async (db) => {
+    const tx = db.transaction(STORE_SERVER_SYNC_META, 'readonly');
+    const raw: unknown = await requestToPromise(
+      tx.objectStore(STORE_SERVER_SYNC_META).get(difficulty),
+      'Failed to read server sync metadata.',
+    );
+    if (
+      isRecord(raw) &&
+      typeof raw.lastSeq === 'number' &&
+      isNonEmptyString(raw.lastSyncedAt) &&
+      (raw.difficulty === 'easy' || raw.difficulty === 'medium' || raw.difficulty === 'hard')
+    ) {
+      return raw as unknown as ServerSyncMetaRecord;
+    }
+    return null;
+  });
+}
+
+export async function countServerBankPuzzles(): Promise<{
+  readonly total: number;
+  readonly easy: number;
+  readonly medium: number;
+  readonly hard: number;
+}> {
+  return withDb(async (db) => {
+    const tx = db.transaction(STORE_SERVER_PUZZLE_BANK, 'readonly');
+    const index = tx.objectStore(STORE_SERVER_PUZZLE_BANK).index('by_difficulty');
+    const [easy, medium, hard] = await Promise.all([
+      requestToPromise(index.count('easy'), 'Count easy server puzzles'),
+      requestToPromise(index.count('medium'), 'Count medium server puzzles'),
+      requestToPromise(index.count('hard'), 'Count hard server puzzles'),
+    ]);
+    return {
+      total: easy + medium + hard,
+      easy,
+      medium,
+      hard,
+    };
   });
 }
 

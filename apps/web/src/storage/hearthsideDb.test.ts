@@ -3,16 +3,25 @@ import { createDefaultProfileSettings } from '@hearthside/game-core';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_PROFILE_NAME,
+  HEARTHSIDE_DB_NAME,
+  addRemoteProfileToDevice,
+  countServerBankPuzzles,
   createGameStorageService,
   createProfile,
   deleteProfile,
   ensureInitialized,
   exportAllData,
+  getProfile,
   getProfileSettings,
+  getServerSyncMeta,
   importAllData,
+  linkLocalProfileToRemote,
   listProfiles,
+  listServerBankPuzzles,
+  putServerBankPuzzles,
   resetHearthsideDbForTests,
   saveProfileSettings,
+  unlinkLocalProfile,
   updateProfile,
 } from './hearthsideDb';
 
@@ -170,5 +179,155 @@ describe('hearthsideDb storage layer', () => {
 
     expect(await p1Storage.loadCachedPuzzle(cacheKey)).toEqual(record);
     expect(await p2Storage.loadCachedPuzzle(cacheKey)).toEqual(record);
+  });
+
+  it('upgrades a v2 IndexedDB database to v3 non-destructively while adding server bank stores', async () => {
+    // Seed a v2 database manually before calling v3 helpers.
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.open(HEARTHSIDE_DB_NAME, 2);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        db.createObjectStore('profiles', { keyPath: 'id' });
+        db.createObjectStore('settings', { keyPath: 'profileId' });
+        const saves = db.createObjectStore('saves', { keyPath: ['profileId', 'gameId', 'slot'] });
+        saves.createIndex('by_profile', 'profileId', { unique: false });
+        saves.createIndex('by_profile_game', ['profileId', 'gameId'], { unique: false });
+        const stats = db.createObjectStore('stats', { keyPath: ['profileId', 'gameId'] });
+        stats.createIndex('by_profile', 'profileId', { unique: false });
+        const completed = db.createObjectStore('completedPuzzles', {
+          keyPath: ['profileId', 'gameId', 'puzzleId'],
+        });
+        completed.createIndex('by_profile', 'profileId', { unique: false });
+        completed.createIndex('by_profile_game', ['profileId', 'gameId'], { unique: false });
+        db.createObjectStore('dailyPuzzles', { keyPath: ['gameId', 'cacheKey'] });
+      };
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction(['profiles', 'settings', 'saves'], 'readwrite');
+        tx.objectStore('profiles').put({
+          id: 'legacy-p1',
+          name: 'Legacy Player',
+          avatarId: 'hearth',
+          accentColor: 'cobalt',
+          createdAt: '2026-11-27T00:00:00.000Z',
+        });
+        tx.objectStore('settings').put({
+          profileId: 'legacy-p1',
+          settings: createDefaultProfileSettings('light'),
+        });
+        tx.objectStore('saves').put({
+          schemaVersion: 1,
+          profileId: 'legacy-p1',
+          gameId: 'sudoku',
+          slot: 'easy',
+          updatedAt: '2026-11-27T00:01:00.000Z',
+          payload: { board: 'kept-save' },
+        });
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      };
+      req.onerror = () => reject(req.error);
+    });
+
+    const profiles = await listProfiles();
+    expect(profiles).toHaveLength(1);
+    expect(profiles[0]?.name).toBe('Legacy Player');
+
+    const storage = createGameStorageService('legacy-p1', 'sudoku');
+    expect((await storage.loadSave<{ board: string }>('easy'))?.payload.board).toBe('kept-save');
+
+    await putServerBankPuzzles(
+      'easy',
+      [
+        {
+          seq: 11,
+          id: 'srv-easy-11',
+          seed: 1000011,
+          engineVersion: '0.1.0-dev',
+          difficulty: 'easy',
+          techniquesRequired: ['naked_single'],
+          clues: '0'.repeat(81),
+          solution: '1'.repeat(81),
+        },
+        {
+          seq: 10,
+          id: 'srv-easy-10',
+          seed: 1000010,
+          engineVersion: '0.1.0-dev',
+          difficulty: 'easy',
+          techniquesRequired: ['hidden_single'],
+          clues: '0'.repeat(81),
+          solution: '2'.repeat(81),
+        },
+      ],
+      11,
+    );
+
+    const listed = await listServerBankPuzzles('easy');
+    expect(listed.map((p) => p.seq)).toEqual([10, 11]);
+    expect(await getServerSyncMeta('easy')).toMatchObject({ difficulty: 'easy', lastSeq: 11 });
+    expect(await countServerBankPuzzles()).toMatchObject({ total: 2, easy: 2, medium: 0, hard: 0 });
+  });
+
+  it('links/unlinks local profiles non-destructively and sets kid-friendly defaults for child profiles', async () => {
+    const init = await ensureInitialized();
+    const localP = init.activeProfile;
+    const storage = createGameStorageService(localP.id, 'sudoku');
+    await storage.saveGame({
+      schemaVersion: 1,
+      profileId: localP.id,
+      gameId: 'sudoku',
+      slot: 'easy',
+      updatedAt: '2026-11-27T12:00:00.000Z',
+      payload: { marker: 'intact' },
+    });
+
+    const linked = await linkLocalProfileToRemote(localP.id, {
+      id: 'remote-owner-1',
+      householdId: 'hh-1',
+      isChild: false,
+    });
+    expect(linked.remoteProfileId).toBe('remote-owner-1');
+    expect(linked.householdId).toBe('hh-1');
+    expect((await storage.loadSave<{ marker: string }>('easy'))?.payload.marker).toBe('intact');
+
+    const childAdded = await addRemoteProfileToDevice(
+      {
+        id: 'remote-child-1',
+        householdId: 'hh-1',
+        name: 'Kiddo',
+        avatarId: 'fox',
+        accentColor: 'amber',
+        isChild: true,
+      },
+      'light',
+    );
+    expect(childAdded.created).toBe(true);
+    expect(childAdded.profile.remoteProfileId).toBe('remote-child-1');
+    expect(childAdded.profile.isChild).toBe(true);
+    expect(childAdded.settings.sudoku.flagWrongValues).toBe(true);
+
+    // Adding the same remote profile again is idempotent.
+    const childRepeat = await addRemoteProfileToDevice(
+      {
+        id: 'remote-child-1',
+        householdId: 'hh-1',
+        name: 'Kiddo',
+        avatarId: 'fox',
+        accentColor: 'amber',
+        isChild: true,
+      },
+      'light',
+    );
+    expect(childRepeat.created).toBe(false);
+    expect(childRepeat.profile.id).toBe(childAdded.profile.id);
+
+    const unlinked = await unlinkLocalProfile(localP.id);
+    expect(unlinked.remoteProfileId).toBeUndefined();
+    expect((await getProfile(localP.id))?.remoteProfileId).toBeUndefined();
+    expect((await storage.loadSave<{ marker: string }>('easy'))?.payload.marker).toBe('intact');
   });
 });
