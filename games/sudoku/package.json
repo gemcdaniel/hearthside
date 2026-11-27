@@ -6,7 +6,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@hearthside/game-core": "workspace:*"
+    "@hearthside/game-core": "workspace:*",
+    "@hearthside/ui": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19.0.0"

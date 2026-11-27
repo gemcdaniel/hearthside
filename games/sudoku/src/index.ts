@@ -137,6 +137,4 @@ export { SudokuBoard, type SudokuBoardProps } from './ui/SudokuBoard';
 export { SudokuControls, type SudokuControlsProps } from './ui/SudokuControls';
 export { SudokuGame, type SudokuGameProps } from './ui/SudokuGame';
 export { SudokuLibraryExtras } from './ui/SudokuLibraryExtras';
-export { SudokuStatsModal, type SudokuStatsModalProps } from './ui/SudokuStatsModal';
-export { SudokuVictoryModal, type SudokuVictoryModalProps } from './ui/SudokuVictoryModal';
 export { formatElapsedTime } from './ui/formatTime';

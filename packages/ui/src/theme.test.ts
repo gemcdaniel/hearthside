@@ -3,7 +3,9 @@ import {
   DEFAULT_THEME_MODE,
   DEFAULT_THEME_NAME,
   DEFAULT_THEME_PREFERENCE,
+  THEME_META_COLORS,
   applyThemeToDocument,
+  getThemeMetaColor,
   isThemeMode,
   isThemeName,
 } from './index';
@@ -28,10 +30,21 @@ describe('ui theme helpers', () => {
     expect(isThemeMode('auto')).toBe(false);
   });
 
-  it('applies data-theme and data-mode attributes to the document root', () => {
-    const el = document.createElement('html');
-    applyThemeToDocument({ theme: 'warm-hearthside', mode: 'dark' }, el);
-    expect(el.dataset.theme).toBe('warm-hearthside');
-    expect(el.dataset.mode).toBe('dark');
+  it('applies data-theme, data-mode, and dynamic theme-color meta tags across all variants', () => {
+    const meta = document.createElement('meta');
+    meta.name = 'theme-color';
+    document.head.append(meta);
+
+    for (const theme of ['clean-minimal', 'warm-hearthside'] as const) {
+      for (const mode of ['light', 'dark'] as const) {
+        applyThemeToDocument({ theme, mode }, document.documentElement);
+        expect(document.documentElement.dataset.theme).toBe(theme);
+        expect(document.documentElement.dataset.mode).toBe(mode);
+        expect(meta.getAttribute('content')).toBe(THEME_META_COLORS[theme][mode]);
+        expect(getThemeMetaColor({ theme, mode })).toBe(THEME_META_COLORS[theme][mode]);
+      }
+    }
+
+    meta.remove();
   });
 });

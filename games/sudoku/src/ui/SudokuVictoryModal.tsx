@@ -1,3 +1,5 @@
+import { useFocusTrap } from '@hearthside/ui';
+import { useId, useRef } from 'react';
 import type { SudokuDifficulty, SudokuMode } from '../engine/types';
 import { TrophyIcon } from './SudokuIcons';
 import { formatElapsedTime } from './formatTime';
@@ -13,6 +15,7 @@ export interface SudokuVictoryModalProps {
   readonly onPlayAgain: () => void;
   readonly onViewStats: () => void;
   readonly onExitToLibrary: () => void;
+  readonly onClose?: () => void;
 }
 
 function formatDiff(difficulty: SudokuDifficulty): string {
@@ -37,24 +40,45 @@ export function SudokuVictoryModal({
   onPlayAgain,
   onViewStats,
   onExitToLibrary,
+  onClose,
 }: SudokuVictoryModalProps) {
+  const modalRef = useRef<HTMLElement>(null);
+  const titleId = useId();
+
+  useFocusTrap(modalRef, {
+    active: open,
+    onEscape: onClose ?? onExitToLibrary,
+  });
+
   if (!open) {
     return null;
   }
 
   return (
-    <div className="hs-modal-backdrop" role="presentation">
+    <div
+      className="hs-modal-backdrop"
+      role="presentation"
+      onClick={(event) => {
+        if (onClose && event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <section
+        ref={modalRef}
         className="hs-modal hs-sudoku-victory-modal"
         role="dialog"
         aria-modal="true"
-        aria-label="Puzzle solved"
+        aria-labelledby={titleId}
+        tabIndex={-1}
       >
         <div className="hs-sudoku-victory-body">
           <div className="hs-sudoku-victory-emblem" aria-hidden="true">
             <TrophyIcon />
           </div>
-          <h2 className="hs-section-title">Puzzle Solved!</h2>
+          <h2 id={titleId} className="hs-section-title">
+            Puzzle Solved!
+          </h2>
           <p className="hs-sudoku-victory-subtitle">
             {mode === 'daily' && dailyDate ? `Daily (${dailyDate}) · ` : ''}
             {formatDiff(difficulty)}

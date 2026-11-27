@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useFocusTrap } from '@hearthside/ui';
+import { useId, useRef, type RefObject } from 'react';
 import { getAverageTimeMs, getWinRatePercent, type SudokuProfileStats } from '../engine/stats';
 import type { SudokuDifficulty } from '../engine/types';
 import { CloseIcon } from './SudokuIcons';
@@ -15,6 +16,7 @@ export interface SudokuStatsModalProps {
   readonly open: boolean;
   readonly profileName: string;
   readonly stats: SudokuProfileStats;
+  readonly returnFocusRef?: RefObject<HTMLElement | null>;
   readonly onClose: () => void;
 }
 
@@ -25,19 +27,21 @@ function formatOptionalTime(ms: number | null): string {
   return formatElapsedTime(ms);
 }
 
-export function SudokuStatsModal({ open, profileName, stats, onClose }: SudokuStatsModalProps) {
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, onClose]);
+export function SudokuStatsModal({
+  open,
+  profileName,
+  stats,
+  returnFocusRef,
+  onClose,
+}: SudokuStatsModalProps) {
+  const modalRef = useRef<HTMLElement>(null);
+  const titleId = useId();
+
+  useFocusTrap(modalRef, {
+    active: open,
+    onEscape: onClose,
+    returnFocusRef,
+  });
 
   if (!open) {
     return null;
@@ -56,13 +60,20 @@ export function SudokuStatsModal({ open, profileName, stats, onClose }: SudokuSt
       }}
     >
       <section
+        ref={modalRef}
         className="hs-modal hs-sudoku-stats-modal"
         role="dialog"
         aria-modal="true"
-        aria-label="Sudoku Statistics"
+        aria-labelledby={titleId}
+        tabIndex={-1}
       >
         <div className="hs-modal-header">
-          <h2 className="hs-section-title">Sudoku Stats · {profileName}</h2>
+          <div className="hs-sudoku-hud-group">
+            <h2 id={titleId} className="hs-section-title">
+              Sudoku Statistics
+            </h2>
+            <span className="hs-sudoku-diff-pill">{profileName}</span>
+          </div>
           <button
             type="button"
             className="hs-sudoku-hud-btn"

@@ -459,10 +459,10 @@ Done when: family playtest feedback is incorporated, all CI checks pass, and `v1
 
 ### 14.4 Phase 3 exit checklist
 
-- [ ] Procedural ambient music per theme, refined SFX + `unitComplete`, and reduced-motion-safe micro-interactions complete and tested.
-- [ ] `@axe-core/playwright` audit, keyboard focus management, and Lighthouse performance budgets pass.
-- [ ] Family playtest feedback addressed, difficulty tiers tuned, and `v1.0.0` offline release tagged.
+- [x] Procedural ambient music per theme, refined SFX + `unitComplete`, and reduced-motion-safe micro-interactions complete and tested (Run 1).
+- [x] `@axe-core/playwright` WCAG 2.1 AA audit across all 4 theme×mode variants, keyboard focus trapping/restoration, dynamic `<meta name="theme-color">`, chunk splitting, and offline PWA cold-start hardening pass (Run 2).
+- [ ] Family playtest feedback addressed, difficulty tiers tuned, and `v1.0.0` offline release tagged (Run 3).
 
 ## 15. Next step
 
-Complete **Phase 3, Run 1** verification, then proceed to **Phase 3, Run 2** (`@axe-core/playwright` accessibility audit, focus restoration, and performance pass).
+Start **Phase 3, Run 3** (family playtesting across desktop and Android devices, difficulty tier tuning, and `v1.0.0` offline release tag).

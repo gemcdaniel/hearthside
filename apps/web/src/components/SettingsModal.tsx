@@ -7,8 +7,17 @@ import {
   type ProfileAccentId,
   type ProfileSettings,
 } from '@hearthside/game-core';
-import { ThemeSwitcher, type ThemeMode, type ThemeName } from '@hearthside/ui';
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { ThemeSwitcher, useFocusTrap, type ThemeMode, type ThemeName } from '@hearthside/ui';
+import {
+  Suspense,
+  lazy,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type RefObject,
+} from 'react';
 import type { StoragePersistenceStatus } from '../diagnostics/indexedDb';
 import {
   exportAllData,
@@ -16,8 +25,11 @@ import {
   importAllData,
   requestStoragePersistence,
 } from '../storage/hearthsideDb';
-import { DiagnosticsPanel } from './DiagnosticsPanel';
 import { ProfileAvatar } from './ProfileAvatar';
+
+const LazyDiagnosticsPanel = lazy(() =>
+  import('./DiagnosticsPanel').then((mod) => ({ default: mod.DiagnosticsPanel })),
+);
 
 interface SettingsModalProps {
   readonly open: boolean;
@@ -25,6 +37,7 @@ interface SettingsModalProps {
   readonly activeProfile: Profile;
   readonly settings: ProfileSettings;
   readonly audio: AudioService;
+  readonly returnFocusRef?: RefObject<HTMLElement | null>;
   readonly onClose: () => void;
   readonly onSelectProfile: (profileId: string) => void;
   readonly onCreateProfile: (input: {
@@ -57,6 +70,7 @@ export function SettingsModal({
   activeProfile,
   settings,
   audio,
+  returnFocusRef,
   onClose,
   onSelectProfile,
   onCreateProfile,
@@ -75,7 +89,15 @@ export function SettingsModal({
     'checking',
   );
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const modalRef = useRef<HTMLElement>(null);
+
+  useFocusTrap(modalRef, {
+    active: open,
+    onEscape: onClose,
+    returnFocusRef,
+  });
 
   useEffect(() => {
     if (!open) {
@@ -95,18 +117,10 @@ export function SettingsModal({
         }
       });
 
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown);
     return () => {
       active = false;
-      window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) {
     return null;
@@ -219,10 +233,12 @@ export function SettingsModal({
       }}
     >
       <section
+        ref={modalRef}
         className="hs-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="hs-settings-title"
+        tabIndex={-1}
       >
         <div className="hs-modal-header">
           <h2 id="hs-settings-title" className="hs-section-title">
@@ -577,9 +593,16 @@ export function SettingsModal({
             ) : null}
           </section>
 
-          <details className="hs-diagnostics-drawer">
+          <details
+            className="hs-diagnostics-drawer"
+            onToggle={(event) => setDiagnosticsOpen(event.currentTarget.open)}
+          >
             <summary className="hs-diagnostics-summary">Developer Diagnostics</summary>
-            <DiagnosticsPanel />
+            {diagnosticsOpen ? (
+              <Suspense fallback={<p className="hs-diag-output">Loading diagnostics...</p>}>
+                <LazyDiagnosticsPanel />
+              </Suspense>
+            ) : null}
           </details>
         </div>
       </section>

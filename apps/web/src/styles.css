@@ -862,6 +862,12 @@ body {
   accent-color: var(--hs-accent);
 }
 
+.hs-checkbox-label input[type='checkbox']:focus-visible,
+.hs-slider-group input[type='range']:focus-visible {
+  outline: 3px solid var(--hs-focus-ring);
+  outline-offset: 2px;
+}
+
 .hs-slider-group {
   display: flex;
   flex-wrap: wrap;

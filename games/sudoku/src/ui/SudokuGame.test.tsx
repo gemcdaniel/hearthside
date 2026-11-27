@@ -178,7 +178,7 @@ describe('SudokuGame UI', () => {
     expect(cell1).toHaveAttribute('data-highlight', 'peer');
     expect(cell80).toHaveAttribute('data-highlight', 'none');
 
-    const notesBtn = screen.getByRole('button', { name: 'Notes' });
+    const notesBtn = screen.getByRole('button', { name: /^Notes/ });
     const numpad = screen.getByRole('group', { name: 'Number pad' });
     expect(notesBtn).toHaveAttribute('aria-pressed', 'false');
     expect(notesBtn).toHaveTextContent('OFF');
@@ -193,6 +193,7 @@ describe('SudokuGame UI', () => {
     const note7 = cell0!.querySelector('[data-note-digit="7"]');
     expect(note7).toHaveAttribute('data-active', 'true');
     expect(note7).toHaveTextContent('7');
+    expect(cell0).toHaveAttribute('aria-label', expect.stringContaining('notes 7'));
 
     // Selecting given cell 13 (value 7) emphasizes note 7 inside cell 0
     fireEvent.pointerDown(cell13!);
@@ -206,7 +207,7 @@ describe('SudokuGame UI', () => {
     expect(statusRail).toHaveAttribute('data-has-message', 'false');
 
     // Toggle Auto-Show ON -> button reports aria-pressed=true and ON badge, candidates appear, zero banner
-    const autoShowBtn = screen.getByRole('button', { name: 'Auto-Show' });
+    const autoShowBtn = screen.getByRole('button', { name: /^Auto-Show/ });
     expect(autoShowBtn).toHaveAttribute('aria-pressed', 'false');
     expect(autoShowBtn).toHaveTextContent('OFF');
     fireEvent.click(autoShowBtn);
@@ -364,7 +365,7 @@ describe('SudokuGame UI', () => {
 
     // Press N -> Notes mode ON, enter note 4, press N -> Notes mode OFF, enter digit 7
     fireEvent.keyDown(window, { key: 'n' });
-    expect(screen.getByRole('button', { name: 'Notes' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /^Notes/ })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.keyDown(window, { key: '4' });
     expect(cell0.querySelector('[data-note-digit="4"]')).toHaveAttribute('data-active', 'true');
 
@@ -498,9 +499,10 @@ describe('SudokuGame UI', () => {
     fireEvent.pointerDown(cell0);
     fireEvent.click(screen.getByRole('button', { name: /Enter 7,/ }));
 
-    const victoryDialog = await screen.findByRole('dialog', { name: 'Puzzle solved' });
+    const victoryDialog = await screen.findByRole('dialog', { name: /Puzzle Solved/i });
     expect(within(victoryDialog).getByText('New Personal Best!')).toBeInTheDocument();
     expect(within(victoryDialog).getByText(/Daily \(2026-11-27\)/)).toBeInTheDocument();
+    expect(screen.getByTestId('sudoku-live-announcer')).toHaveTextContent(/Puzzle solved/i);
 
     // View Stats button opens live Stats modal cleanly in front of Victory modal
     fireEvent.click(within(victoryDialog).getByRole('button', { name: 'View Stats' }));
@@ -514,7 +516,7 @@ describe('SudokuGame UI', () => {
     // Closing Stats returns cleanly to Victory modal
     fireEvent.click(within(statsDialog).getByRole('button', { name: 'Close Statistics' }));
     expect(screen.queryByRole('dialog', { name: 'Sudoku Statistics' })).not.toBeInTheDocument();
-    expect(screen.getByRole('dialog', { name: 'Puzzle solved' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: /Puzzle Solved/i })).toBeInTheDocument();
 
     first.unmount();
 

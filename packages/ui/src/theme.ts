@@ -33,6 +33,22 @@ export const DEFAULT_THEME_PREFERENCE: ThemePreference = {
   mode: DEFAULT_THEME_MODE,
 };
 
+/** Matching `--hs-bg` tokens for dynamic `<meta name="theme-color">` PWA title/status bar sync. */
+export const THEME_META_COLORS: Readonly<Record<ThemeName, Readonly<Record<ThemeMode, string>>>> = {
+  'clean-minimal': {
+    light: '#f8fafc',
+    dark: '#0b1120',
+  },
+  'warm-hearthside': {
+    light: '#faf7f2',
+    dark: '#1c1917',
+  },
+};
+
+export function getThemeMetaColor(preference: ThemePreference): string {
+  return THEME_META_COLORS[preference.theme][preference.mode];
+}
+
 export function isThemeName(value: unknown): value is ThemeName {
   return value === 'clean-minimal' || value === 'warm-hearthside';
 }
@@ -59,4 +75,16 @@ export function applyThemeToDocument(
   }
   root.dataset.theme = preference.theme;
   root.dataset.mode = preference.mode;
+
+  const doc = root.ownerDocument;
+  const themeColor = getThemeMetaColor(preference);
+  let meta = doc.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (!meta && doc.head) {
+    meta = doc.createElement('meta');
+    meta.name = 'theme-color';
+    doc.head.append(meta);
+  }
+  if (meta) {
+    meta.setAttribute('content', themeColor);
+  }
 }

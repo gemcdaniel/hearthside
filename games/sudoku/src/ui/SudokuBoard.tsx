@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { BOARD_SIZE, COL_OF, GRID_SIZE, ROW_OF, digitBit, hasDigitBit } from '../engine/boardMath';
+import { useEffect, useRef, type ReactNode, type RefObject } from 'react';
+import { BOARD_SIZE, GRID_SIZE, digitBit, hasDigitBit, maskToDigits } from '../engine/boardMath';
 import { getRegionCells, getTier1Region, type ActiveHintState } from '../engine/hints';
 import {
   getDuplicateConflicts,
@@ -9,7 +9,8 @@ import {
 } from '../engine/selectors';
 import type { SudokuState } from '../engine/types';
 
-const CELL_INDICES = Array.from({ length: BOARD_SIZE }, (_, i) => i);
+const ROW_INDICES = Array.from({ length: GRID_SIZE }, (_, r) => r);
+const COL_INDICES = Array.from({ length: GRID_SIZE }, (_, c) => c);
 const NOTE_DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
 const THIN_LINE_POSITIONS = [100, 200, 400, 500, 700, 800] as const;
 const BOX_LINE_POSITIONS = [300, 600] as const;
@@ -26,6 +27,7 @@ export interface SudokuBoardProps {
   readonly nudgeCells?: ReadonlySet<number>;
   readonly nudgeSeq?: number;
   readonly victoryRipple?: boolean;
+  readonly pauseResumeBtnRef?: RefObject<HTMLButtonElement | null>;
   readonly onSelectCell: (cell: number) => void;
   readonly onResume: () => void;
   readonly stageOverlay?: ReactNode;
@@ -43,10 +45,31 @@ export function SudokuBoard({
   nudgeCells,
   nudgeSeq = 0,
   victoryRipple = false,
+  pauseResumeBtnRef,
   onSelectCell,
   onResume,
   stageOverlay,
 }: SudokuBoardProps) {
+  const gridRef = useRef<HTMLDivElement>(null);
+  const cellRefs = useRef<(HTMLButtonElement | null)[]>(
+    Array.from({ length: BOARD_SIZE }, () => null),
+  );
+
+  useEffect(() => {
+    if (state.paused || state.selectedCell === null) {
+      return;
+    }
+    const gridEl = gridRef.current;
+    const activeEl = document.activeElement;
+    if (!gridEl || !(activeEl instanceof Node) || !gridEl.contains(activeEl)) {
+      return;
+    }
+    const targetCell = cellRefs.current[state.selectedCell];
+    if (targetCell && targetCell !== activeEl) {
+      targetCell.focus({ preventScroll: true });
+    }
+  }, [state.selectedCell, state.paused]);
+
   const highlights = getHighlightMap(state);
   const peerSet = new Set(highlights.peers);
   const sameDigitSet = new Set(highlights.sameDigit);
@@ -102,6 +125,7 @@ export function SudokuBoard({
     <div className="hs-sudoku-frame">
       <div className="hs-sudoku-stage">
         <div
+          ref={gridRef}
           className="hs-sudoku-grid"
           role="grid"
           aria-label="9 by 9 Sudoku board"
@@ -110,165 +134,180 @@ export function SudokuBoard({
           data-autoshow={state.autoShowEnabled ? 'true' : 'false'}
           data-victory-ripple={victoryRipple && !state.paused ? 'true' : 'false'}
         >
-          {CELL_INDICES.map((idx) => {
-            const cell = state.cells[idx];
-            if (!cell) {
-              return null;
-            }
-            const row = ROW_OF[idx] ?? 0;
-            const col = COL_OF[idx] ?? 0;
-            const isSelected = highlights.selected === idx;
-            const isSameDigit = sameDigitSet.has(idx);
-            const isPeer = peerSet.has(idx);
-            const highlightKind = isSelected
-              ? 'selected'
-              : isSameDigit
-                ? 'same-digit'
-                : isPeer
-                  ? 'peer'
-                  : 'none';
+          {ROW_INDICES.map((row) => (
+            <div key={row} className="hs-sudoku-row" role="row" aria-rowindex={row + 1}>
+              {COL_INDICES.map((col) => {
+                const idx = row * GRID_SIZE + col;
+                const cell = state.cells[idx];
+                if (!cell) {
+                  return null;
+                }
+                const isSelected = highlights.selected === idx;
+                const isSameDigit = sameDigitSet.has(idx);
+                const isPeer = peerSet.has(idx);
+                const highlightKind = isSelected
+                  ? 'selected'
+                  : isSameDigit
+                    ? 'same-digit'
+                    : isPeer
+                      ? 'peer'
+                      : 'none';
 
-            const isConflict = !state.paused && conflictSet.has(idx);
-            const isWrong = !state.paused && wrongSet.has(idx);
-            const visibleNotesMask = state.paused ? 0 : getVisibleNotes(state, idx);
-            const elimMask = elimMaskByCell.get(idx) ?? 0;
-            const previewDigit = placementByCell.get(idx);
+                const isConflict = !state.paused && conflictSet.has(idx);
+                const isWrong = !state.paused && wrongSet.has(idx);
+                const visibleNotesMask = state.paused ? 0 : getVisibleNotes(state, idx);
+                const visibleNotesDigits =
+                  visibleNotesMask !== 0 ? maskToDigits(visibleNotesMask) : [];
+                const elimMask = elimMaskByCell.get(idx) ?? 0;
+                const previewDigit = placementByCell.get(idx);
 
-            const isHintIssue = issueCellSet.has(idx);
-            const isHintTarget = previewDigit !== undefined || elimMask !== 0;
-            const isHintDriver = driverCellSet.has(idx);
-            const isHintRegion = regionCellSet.has(idx);
-            const hintRole = isHintIssue
-              ? 'issue'
-              : isHintTarget
-                ? 'target'
-                : isHintDriver
-                  ? 'driver'
-                  : isHintRegion
-                    ? 'region'
-                    : 'none';
+                const isHintIssue = issueCellSet.has(idx);
+                const isHintTarget = previewDigit !== undefined || elimMask !== 0;
+                const isHintDriver = driverCellSet.has(idx);
+                const isHintRegion = regionCellSet.has(idx);
+                const hintRole = isHintIssue
+                  ? 'issue'
+                  : isHintTarget
+                    ? 'target'
+                    : isHintDriver
+                      ? 'driver'
+                      : isHintRegion
+                        ? 'region'
+                        : 'none';
 
-            const ariaParts = [`Row ${row + 1}, Column ${col + 1}`];
-            if (!state.paused) {
-              if (cell.value !== 0) {
-                ariaParts.push(`${cell.given ? 'given ' : ''}${cell.value}`);
-              } else {
-                ariaParts.push('empty');
-              }
-              if (isConflict) ariaParts.push('conflict');
-              if (isWrong) ariaParts.push('wrong value');
-              if (isHintIssue) ariaParts.push('hint issue');
-              if (isHintTarget) ariaParts.push('hint target');
-              if (isHintDriver) ariaParts.push('hint clue cell');
-            }
-            if (isSelected) ariaParts.push('selected');
+                const ariaParts = [`Row ${row + 1}, Column ${col + 1}`];
+                if (!state.paused) {
+                  if (cell.value !== 0) {
+                    ariaParts.push(`${cell.given ? 'given ' : ''}${cell.value}`);
+                  } else {
+                    ariaParts.push('empty');
+                    if (visibleNotesDigits.length > 0) {
+                      ariaParts.push(`notes ${visibleNotesDigits.join(', ')}`);
+                    }
+                  }
+                  if (isConflict) ariaParts.push('conflict');
+                  if (isWrong) ariaParts.push('wrong value');
+                  if (isHintIssue) ariaParts.push('hint issue');
+                  if (isHintTarget) ariaParts.push('hint target');
+                  if (isHintDriver) ariaParts.push('hint clue cell');
+                }
+                if (isSelected) ariaParts.push('selected');
 
-            const sweepDelay = !state.paused ? sweepDelayByCell?.[idx] : undefined;
-            const isUnitCompleted = sweepDelay !== undefined;
-            const isPopped = !state.paused && Boolean(popCells?.has(idx));
-            const isNudged = !state.paused && Boolean(nudgeCells?.has(idx));
+                const sweepDelay = !state.paused ? sweepDelayByCell?.[idx] : undefined;
+                const isUnitCompleted = sweepDelay !== undefined;
+                const isPopped = !state.paused && Boolean(popCells?.has(idx));
+                const isNudged = !state.paused && Boolean(nudgeCells?.has(idx));
 
-            return (
-              <button
-                key={idx}
-                type="button"
-                role="gridcell"
-                className="hs-sudoku-cell"
-                data-highlight={highlightKind}
-                data-hint-role={hintRole}
-                data-given={cell.given ? 'true' : 'false'}
-                data-conflict={isConflict ? 'true' : 'false'}
-                data-wrong={isWrong ? 'true' : 'false'}
-                data-autoshow={state.autoShowEnabled ? 'true' : 'false'}
-                data-unit-complete={isUnitCompleted ? 'true' : 'false'}
-                data-nudge={isNudged ? 'true' : 'false'}
-                data-row={row}
-                data-col={col}
-                aria-rowindex={row + 1}
-                aria-colindex={col + 1}
-                aria-selected={isSelected}
-                aria-label={ariaParts.join(', ')}
-                tabIndex={idx === activeTabIndex ? 0 : -1}
-                onPointerDown={() => onSelectCell(idx)}
-                onClick={() => onSelectCell(idx)}
-              >
-                {isUnitCompleted ? (
-                  <span
-                    key={`sweep-${sweepSeq}`}
-                    className="hs-cell-sweep"
-                    aria-hidden="true"
-                    style={{ animationDelay: `${sweepDelay}ms` }}
-                  />
-                ) : null}
-
-                {victoryRipple && !state.paused ? (
-                  <span
-                    className="hs-cell-victory-wave"
-                    aria-hidden="true"
-                    style={{ animationDelay: `${(row + col) * 28}ms` }}
-                  />
-                ) : null}
-
-                {!state.paused && cell.value !== 0 ? (
-                  <span
-                    key={isNudged ? `nudge-${nudgeSeq}` : isPopped ? `pop-${popSeq}` : 'digit'}
-                    className="hs-sudoku-digit"
-                    data-pop={isPopped ? 'true' : 'false'}
+                return (
+                  <button
+                    key={idx}
+                    ref={(el) => {
+                      cellRefs.current[idx] = el;
+                    }}
+                    type="button"
+                    role="gridcell"
+                    className="hs-sudoku-cell"
+                    data-highlight={highlightKind}
+                    data-hint-role={hintRole}
+                    data-given={cell.given ? 'true' : 'false'}
+                    data-conflict={isConflict ? 'true' : 'false'}
+                    data-wrong={isWrong ? 'true' : 'false'}
+                    data-autoshow={state.autoShowEnabled ? 'true' : 'false'}
+                    data-unit-complete={isUnitCompleted ? 'true' : 'false'}
                     data-nudge={isNudged ? 'true' : 'false'}
+                    data-row={row}
+                    data-col={col}
+                    aria-colindex={col + 1}
+                    aria-selected={isSelected}
+                    aria-label={ariaParts.join(', ')}
+                    tabIndex={idx === activeTabIndex ? 0 : -1}
+                    onPointerDown={() => onSelectCell(idx)}
+                    onFocus={() => {
+                      if (!state.paused && state.selectedCell !== idx) {
+                        onSelectCell(idx);
+                      }
+                    }}
+                    onClick={() => onSelectCell(idx)}
                   >
-                    {cell.value}
-                  </span>
-                ) : !state.paused && previewDigit !== undefined ? (
-                  <span className="hs-sudoku-hint-preview" aria-hidden="true">
-                    {previewDigit}
-                  </span>
-                ) : null}
+                    {isUnitCompleted ? (
+                      <span
+                        key={`sweep-${sweepSeq}`}
+                        className="hs-cell-sweep"
+                        aria-hidden="true"
+                        style={{ animationDelay: `${sweepDelay}ms` }}
+                      />
+                    ) : null}
 
-                {!state.paused &&
-                cell.value === 0 &&
-                previewDigit === undefined &&
-                (visibleNotesMask !== 0 || elimMask !== 0) ? (
-                  <span className="hs-sudoku-notes" aria-hidden="true">
-                    {NOTE_DIGITS.map((digit) => {
-                      const isElim = hasDigitBit(elimMask, digit);
-                      const shown = hasDigitBit(visibleNotesMask, digit) || isElim;
-                      const matchesSelectedDigit = shown && !isElim && selectedDigit === digit;
-                      return (
-                        <span
-                          key={digit}
-                          className="hs-sudoku-note"
-                          data-note-digit={digit}
-                          data-active={shown ? 'true' : 'false'}
-                          data-note-match={matchesSelectedDigit ? 'true' : 'false'}
-                          data-hint-elim={isElim ? 'true' : 'false'}
-                        >
-                          {shown ? digit : ''}
-                        </span>
-                      );
-                    })}
-                  </span>
-                ) : null}
+                    {victoryRipple && !state.paused ? (
+                      <span
+                        className="hs-cell-victory-wave"
+                        aria-hidden="true"
+                        style={{ animationDelay: `${(row + col) * 28}ms` }}
+                      />
+                    ) : null}
 
-                {isConflict ? (
-                  <span className="hs-cell-flag hs-cell-flag-conflict" aria-hidden="true">
-                    !
-                  </span>
-                ) : isWrong || isHintIssue ? (
-                  <span className="hs-cell-flag hs-cell-flag-wrong" aria-hidden="true">
-                    ×
-                  </span>
-                ) : isHintTarget ? (
-                  <span className="hs-cell-flag hs-cell-flag-hint-target" aria-hidden="true">
-                    ★
-                  </span>
-                ) : isHintDriver ? (
-                  <span className="hs-cell-flag hs-cell-flag-hint-driver" aria-hidden="true">
-                    ◆
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
+                    {!state.paused && cell.value !== 0 ? (
+                      <span
+                        key={isNudged ? `nudge-${nudgeSeq}` : isPopped ? `pop-${popSeq}` : 'digit'}
+                        className="hs-sudoku-digit"
+                        data-pop={isPopped ? 'true' : 'false'}
+                        data-nudge={isNudged ? 'true' : 'false'}
+                      >
+                        {cell.value}
+                      </span>
+                    ) : !state.paused && previewDigit !== undefined ? (
+                      <span className="hs-sudoku-hint-preview" aria-hidden="true">
+                        {previewDigit}
+                      </span>
+                    ) : null}
+
+                    {!state.paused &&
+                    cell.value === 0 &&
+                    previewDigit === undefined &&
+                    (visibleNotesMask !== 0 || elimMask !== 0) ? (
+                      <span className="hs-sudoku-notes" aria-hidden="true">
+                        {NOTE_DIGITS.map((digit) => {
+                          const isElim = hasDigitBit(elimMask, digit);
+                          const shown = hasDigitBit(visibleNotesMask, digit) || isElim;
+                          const matchesSelectedDigit = shown && !isElim && selectedDigit === digit;
+                          return (
+                            <span
+                              key={digit}
+                              className="hs-sudoku-note"
+                              data-note-digit={digit}
+                              data-active={shown ? 'true' : 'false'}
+                              data-note-match={matchesSelectedDigit ? 'true' : 'false'}
+                              data-hint-elim={isElim ? 'true' : 'false'}
+                            >
+                              {shown ? ` ${digit} ` : ''}
+                            </span>
+                          );
+                        })}
+                      </span>
+                    ) : null}
+
+                    {isConflict ? (
+                      <span className="hs-cell-flag hs-cell-flag-conflict" aria-hidden="true">
+                        !
+                      </span>
+                    ) : isWrong || isHintIssue ? (
+                      <span className="hs-cell-flag hs-cell-flag-wrong" aria-hidden="true">
+                        ×
+                      </span>
+                    ) : isHintTarget ? (
+                      <span className="hs-cell-flag hs-cell-flag-hint-target" aria-hidden="true">
+                        ★
+                      </span>
+                    ) : isHintDriver ? (
+                      <span className="hs-cell-flag hs-cell-flag-hint-driver" aria-hidden="true">
+                        ◆
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </div>
 
         <svg
@@ -339,7 +378,12 @@ export function SudokuBoard({
             <p className="hs-sudoku-curtain-subtitle">
               Board hidden and timer stopped while paused.
             </p>
-            <button type="button" className="hs-btn hs-btn-primary" onClick={onResume}>
+            <button
+              ref={pauseResumeBtnRef}
+              type="button"
+              className="hs-btn hs-btn-primary"
+              onClick={onResume}
+            >
               Resume Game
             </button>
           </div>

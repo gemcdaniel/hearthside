@@ -74,9 +74,7 @@ export function SudokuControls({
         >
           <UndoIcon />
           <span className="hs-sudoku-tool-label">Undo</span>
-          <span className="hs-sudoku-kbd" aria-hidden="true">
-            Ctrl+Z
-          </span>
+          <span className="hs-sudoku-kbd" aria-hidden="true" data-kbd="Ctrl+Z" />
         </button>
 
         <button
@@ -88,9 +86,7 @@ export function SudokuControls({
         >
           <RedoIcon />
           <span className="hs-sudoku-tool-label">Redo</span>
-          <span className="hs-sudoku-kbd" aria-hidden="true">
-            Ctrl+Y
-          </span>
+          <span className="hs-sudoku-kbd" aria-hidden="true" data-kbd="Ctrl+Y" />
         </button>
 
         <button
@@ -102,37 +98,27 @@ export function SudokuControls({
         >
           <EraseIcon />
           <span className="hs-sudoku-tool-label">Erase</span>
-          <span className="hs-sudoku-kbd" aria-hidden="true">
-            Del
-          </span>
+          <span className="hs-sudoku-kbd" aria-hidden="true" data-kbd="Del" />
         </button>
 
         <button
           type="button"
           className="hs-sudoku-tool-btn hs-sudoku-notes-btn"
-          aria-label="Notes"
           aria-pressed={notesMode}
           disabled={disabled}
           onClick={onToggleNotesMode}
         >
           <NotesIcon />
-          <span className="hs-sudoku-tool-label">Notes</span>
-          <span
-            className="hs-toggle-state"
-            data-state={notesMode ? 'on' : 'off'}
-            aria-hidden="true"
-          >
+          <span className="hs-sudoku-tool-label">Notes</span>{' '}
+          <span className="hs-toggle-state" data-state={notesMode ? 'on' : 'off'}>
             {notesMode ? 'ON' : 'OFF'}
           </span>
-          <span className="hs-sudoku-kbd" aria-hidden="true">
-            N
-          </span>
+          <span className="hs-sudoku-kbd" aria-hidden="true" data-kbd="N" />
         </button>
 
         <button
           type="button"
           className="hs-sudoku-tool-btn hs-sudoku-autoshow-btn"
-          aria-label="Auto-Show"
           aria-pressed={autoShowEnabled}
           disabled={disabled}
           title="Show legal candidates (your manual notes stay preserved in memory)"
@@ -142,17 +128,11 @@ export function SudokuControls({
             <AutoShowIcon />
             <span className="hs-autoshow-dot" aria-hidden="true" />
           </span>
-          <span className="hs-sudoku-tool-label">Auto-Show</span>
-          <span
-            className="hs-toggle-state"
-            data-state={autoShowEnabled ? 'on' : 'off'}
-            aria-hidden="true"
-          >
+          <span className="hs-sudoku-tool-label">Auto-Show</span>{' '}
+          <span className="hs-toggle-state" data-state={autoShowEnabled ? 'on' : 'off'}>
             {autoShowEnabled ? 'ON' : 'OFF'}
           </span>
-          <span className="hs-sudoku-kbd" aria-hidden="true">
-            A
-          </span>
+          <span className="hs-sudoku-kbd" aria-hidden="true" data-kbd="A" />
         </button>
 
         <button
@@ -172,16 +152,13 @@ export function SudokuControls({
         <button
           type="button"
           className="hs-sudoku-tool-btn hs-sudoku-hint-btn"
-          aria-label="Hint"
           aria-pressed={hintActive}
           disabled={disabled || hintLoading}
           onClick={onHint}
         >
           <HintIcon />
           <span className="hs-sudoku-tool-label">{hintLabel}</span>
-          <span className="hs-sudoku-kbd" aria-hidden="true">
-            H
-          </span>
+          <span className="hs-sudoku-kbd" aria-hidden="true" data-kbd="H" />
         </button>
       </div>
 
@@ -204,7 +181,7 @@ export function SudokuControls({
                 aria-label={`${notesMode ? 'Note' : 'Enter'} ${digit}, ${remaining} remaining`}
                 onClick={() => onDigitInput(digit)}
               >
-                <span className="hs-sudoku-num-digit">{digit}</span>
+                <span className="hs-sudoku-num-digit">{digit}</span>{' '}
                 <span className="hs-sudoku-num-remaining">{remaining}</span>
               </button>
             );

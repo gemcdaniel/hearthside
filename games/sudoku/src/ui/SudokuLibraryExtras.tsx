@@ -1,5 +1,5 @@
 import type { GameLibraryExtrasProps, SaveSlotSummary } from '@hearthside/game-core';
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { dailySlotKey, getLocalDateString } from '../engine/daily';
 import {
   createEmptySudokuStats,
@@ -8,9 +8,12 @@ import {
 } from '../engine/stats';
 import type { SudokuDifficulty } from '../engine/types';
 import { CalendarIcon, StatsIcon } from './SudokuIcons';
-import { SudokuStatsModal } from './SudokuStatsModal';
 import { formatElapsedTime } from './formatTime';
 import './sudoku.css';
+
+const LazySudokuStatsModal = lazy(() =>
+  import('./SudokuStatsModal').then((mod) => ({ default: mod.SudokuStatsModal })),
+);
 
 const DAILY_TIERS: readonly { readonly id: SudokuDifficulty; readonly label: string }[] = [
   { id: 'easy', label: 'Daily Easy' },
@@ -28,6 +31,7 @@ export function SudokuLibraryExtras({
   const todayDate = getLocalDateString();
   const [stats, setStats] = useState<SudokuProfileStats>(createEmptySudokuStats);
   const [statsOpen, setStatsOpen] = useState(false);
+  const statsTriggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -64,7 +68,12 @@ export function SudokuLibraryExtras({
           >
             {stats.currentDailyStreak} day streak
           </span>
-          <button type="button" className="hs-sudoku-stats-link" onClick={() => setStatsOpen(true)}>
+          <button
+            ref={statsTriggerRef}
+            type="button"
+            className="hs-sudoku-stats-link"
+            onClick={() => setStatsOpen(true)}
+          >
             <StatsIcon />
             <span>View Stats</span>
           </button>
@@ -97,12 +106,17 @@ export function SudokuLibraryExtras({
         })}
       </div>
 
-      <SudokuStatsModal
-        open={statsOpen}
-        profileName={activeProfile.name}
-        stats={stats}
-        onClose={() => setStatsOpen(false)}
-      />
+      {statsOpen ? (
+        <Suspense fallback={null}>
+          <LazySudokuStatsModal
+            open={statsOpen}
+            profileName={activeProfile.name}
+            stats={stats}
+            returnFocusRef={statsTriggerRef}
+            onClose={() => setStatsOpen(false)}
+          />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

@@ -7,13 +7,16 @@ import {
   type SaveSlotSummary,
 } from '@hearthside/game-core';
 import { applyThemeToDocument } from '@hearthside/ui';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { attachAudioUnlockListeners, audioService } from './audio/audioService';
 import { GameHost } from './components/GameHost';
 import { LibraryView, type SavedSlotsByGame } from './components/LibraryView';
 import { PwaUpdateBanner } from './components/PwaUpdateBanner';
-import { SettingsModal } from './components/SettingsModal';
 import { ShellHeader } from './components/ShellHeader';
+
+const LazySettingsModal = lazy(() =>
+  import('./components/SettingsModal').then((mod) => ({ default: mod.SettingsModal })),
+);
 import { shellGameRegistry } from './games/shellRegistry';
 import {
   DEFAULT_PROFILE_ID,
@@ -68,6 +71,7 @@ export function App() {
   const [libraryRefreshVersion, setLibraryRefreshVersion] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const initPromiseRef = useRef<Promise<void> | null>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
 
   const games = shellGameRegistry.listMetadata();
   const activeGameName =
@@ -233,6 +237,7 @@ export function App() {
         profiles={profiles}
         activeProfile={activeProfile}
         activeGameName={activeGameName}
+        settingsButtonRef={settingsButtonRef}
         onSelectProfile={(id) => void handleSelectProfile(id)}
         onOpenSettings={() => {
           audioService.playSfx('tap');
@@ -267,20 +272,25 @@ export function App() {
         )}
       </main>
 
-      <SettingsModal
-        open={settingsOpen}
-        profiles={profiles}
-        activeProfile={activeProfile}
-        settings={settings}
-        audio={audioService}
-        onClose={() => setSettingsOpen(false)}
-        onSelectProfile={(id) => void handleSelectProfile(id)}
-        onCreateProfile={handleCreateProfile}
-        onRenameProfile={handleRenameProfile}
-        onDeleteProfile={handleDeleteProfile}
-        onUpdateSettings={handleUpdateSettings}
-        onDataImported={handleDataImported}
-      />
+      {settingsOpen ? (
+        <Suspense fallback={null}>
+          <LazySettingsModal
+            open={settingsOpen}
+            profiles={profiles}
+            activeProfile={activeProfile}
+            settings={settings}
+            audio={audioService}
+            returnFocusRef={settingsButtonRef}
+            onClose={() => setSettingsOpen(false)}
+            onSelectProfile={(id) => void handleSelectProfile(id)}
+            onCreateProfile={handleCreateProfile}
+            onRenameProfile={handleRenameProfile}
+            onDeleteProfile={handleDeleteProfile}
+            onUpdateSettings={handleUpdateSettings}
+            onDataImported={handleDataImported}
+          />
+        </Suspense>
+      ) : null}
 
       <PwaUpdateBanner />
     </div>

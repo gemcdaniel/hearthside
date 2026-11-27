@@ -1,5 +1,6 @@
 import type { ShellServices } from '@hearthside/game-core';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusTrap } from '@hearthside/ui';
+import { Suspense, lazy, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { BOARD_SIZE, COL_OF, GRID_SIZE, PEERS, ROW_OF } from '../engine/boardMath';
 import {
   computeDailySeed,
@@ -50,10 +51,15 @@ import {
   RotatePhoneIcon,
   StatsIcon,
 } from './SudokuIcons';
-import { SudokuStatsModal } from './SudokuStatsModal';
-import { SudokuVictoryModal } from './SudokuVictoryModal';
 import { formatElapsedTime } from './formatTime';
 import './sudoku.css';
+
+const LazySudokuStatsModal = lazy(() =>
+  import('./SudokuStatsModal').then((mod) => ({ default: mod.SudokuStatsModal })),
+);
+const LazySudokuVictoryModal = lazy(() =>
+  import('./SudokuVictoryModal').then((mod) => ({ default: mod.SudokuVictoryModal })),
+);
 
 export interface SudokuGameProps {
   readonly services: ShellServices;
@@ -101,6 +107,18 @@ function moveSelectedCell(current: number | null, key: string): number | null {
   }
 }
 
+function formatUnitCompletionAnnouncement(
+  rows: readonly number[],
+  cols: readonly number[],
+  boxes: readonly number[],
+): string {
+  const parts: string[] = [];
+  for (const r of rows) parts.push(`Row ${r + 1}`);
+  for (const c of cols) parts.push(`Column ${c + 1}`);
+  for (const b of boxes) parts.push(`Box ${b + 1}`);
+  return parts.length > 0 ? `Completed ${parts.join(', ')}.` : '';
+}
+
 function isEditableElementFocused(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -129,6 +147,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
   const [stats, setStats] = useState<SudokuProfileStats>(createEmptySudokuStats);
   const [statsOpen, setStatsOpen] = useState(false);
   const [victorySummary, setVictorySummary] = useState<VictorySummary | null>(null);
+  const [announcement, setAnnouncement] = useState('');
   const [popEffect, setPopEffect] = useState<{
     readonly cells: ReadonlySet<number>;
     readonly seq: number;
@@ -142,6 +161,20 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
     readonly seq: number;
   } | null>(null);
   const [victoryRippleActive, setVictoryRippleActive] = useState(false);
+
+  const confirmDialogRef = useRef<HTMLDivElement>(null);
+  const confirmTitleId = useId();
+  const newPuzzleBtnRef = useRef<HTMLButtonElement>(null);
+  const statsButtonRef = useRef<HTMLButtonElement>(null);
+  const pauseButtonRef = useRef<HTMLButtonElement>(null);
+  const pauseResumeBtnRef = useRef<HTMLButtonElement>(null);
+  const prevPausedRef = useRef(false);
+
+  useFocusTrap(confirmDialogRef, {
+    active: confirmNewPuzzle,
+    onEscape: () => setConfirmNewPuzzle(false),
+    returnFocusRef: newPuzzleBtnRef,
+  });
 
   const effectSeqRef = useRef(0);
   const effectTimersRef = useRef<{
@@ -163,6 +196,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
   const completedIdsRef = useRef<Set<string>>(new Set());
   const hintRequestSeqRef = useRef(0);
   const overflowCountRef = useRef(0);
+  const lastSelectedCellRef = useRef<number | null>(null);
 
   const clearMotionEffects = useCallback(() => {
     const timers = effectTimersRef.current;
@@ -229,6 +263,23 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
       if (timers.nudge) clearTimeout(timers.nudge);
     };
   }, []);
+
+  useEffect(() => {
+    const wasPaused = prevPausedRef.current;
+    prevPausedRef.current = state.paused;
+    if (wasPaused === state.paused) {
+      return;
+    }
+    if (state.paused) {
+      setAnnouncement('Game paused. Board hidden and timer stopped.');
+      pauseResumeBtnRef.current?.focus({ preventScroll: true });
+    } else {
+      setAnnouncement('Game resumed.');
+      if (document.activeElement === document.body || document.activeElement === null) {
+        pauseButtonRef.current?.focus({ preventScroll: true });
+      }
+    }
+  }, [state.paused]);
 
   const persistSave = useCallback(
     async (snapshot: SudokuState) => {
@@ -445,6 +496,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
     setUnitSweepEffect(null);
     setNudgeEffect(null);
     setVictoryRippleActive(true);
+    setAnnouncement(`Puzzle solved in ${formatElapsedTime(state.elapsedMs)}!`);
     servicesRef.current.audio.playSfx('win');
 
     const snapshot = state;
@@ -520,10 +572,13 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
   );
 
   const handleSelectCell = useCallback((cell: number) => {
-    if (stateRef.current.selectedCell !== cell) {
+    if (lastSelectedCellRef.current !== cell && stateRef.current.selectedCell !== cell) {
       servicesRef.current.audio.playSfx('tap');
     }
-    setState((prev) => reduceSudoku(prev, sudokuActions.selectCell(cell)));
+    lastSelectedCellRef.current = cell;
+    setState((prev) =>
+      prev.selectedCell === cell ? prev : reduceSudoku(prev, sudokuActions.selectCell(cell)),
+    );
   }, []);
 
   const handleDigitInput = useCallback(
@@ -574,12 +629,26 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
           triggerNudge(Array.from(nudged));
           if (!next.completed) {
             servicesRef.current.audio.playSfx('conflict');
+            const rowNum = (ROW_OF[cell] ?? 0) + 1;
+            const colNum = (COL_OF[cell] ?? 0) + 1;
+            setAnnouncement(
+              hasFlaggedConflict
+                ? `Duplicate conflict at Row ${rowNum}, Column ${colNum}.`
+                : `Wrong value at Row ${rowNum}, Column ${colNum}.`,
+            );
           }
         } else if (!next.completed) {
           const newlyCompleted = detectNewlyCompletedUnits(current.cells, next.cells, [cell]);
           if (newlyCompleted.cells.length > 0) {
             triggerUnitSweep(newlyCompleted.delayByCell);
             servicesRef.current.audio.playSfx('unitComplete');
+            setAnnouncement(
+              formatUnitCompletionAnnouncement(
+                newlyCompleted.rows,
+                newlyCompleted.cols,
+                newlyCompleted.boxes,
+              ),
+            );
           } else {
             servicesRef.current.audio.playSfx('place');
           }
@@ -670,15 +739,17 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
     setState(next);
     if (next.checkedWrongCells.length === 0) {
       servicesRef.current.audio.playSfx('tap');
-      setCheckMessage('Everything entered so far matches the solution!');
+      const okMsg = 'Everything entered so far matches the solution!';
+      setCheckMessage(okMsg);
+      setAnnouncement(okMsg);
     } else {
       triggerNudge(next.checkedWrongCells);
       servicesRef.current.audio.playSfx('conflict');
-      setCheckMessage(
-        `${next.checkedWrongCells.length} wrong ${
-          next.checkedWrongCells.length === 1 ? 'entry' : 'entries'
-        } highlighted.`,
-      );
+      const wrongMsg = `${next.checkedWrongCells.length} wrong ${
+        next.checkedWrongCells.length === 1 ? 'entry' : 'entries'
+      } highlighted.`;
+      setCheckMessage(wrongMsg);
+      setAnnouncement(wrongMsg);
     }
   }, [generatingPuzzle, triggerNudge]);
 
@@ -694,6 +765,8 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
         if (placedCells.length > 0) {
           triggerPop(placedCells);
         }
+        const applyMessage =
+          step.placements.length > 0 ? 'Applied hint placement.' : 'Applied hint eliminations.';
         if (!next.completed) {
           const newlyCompleted =
             placedCells.length > 0
@@ -702,22 +775,30 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
           if (newlyCompleted && newlyCompleted.cells.length > 0) {
             triggerUnitSweep(newlyCompleted.delayByCell);
             servicesRef.current.audio.playSfx('unitComplete');
+            setAnnouncement(
+              `${applyMessage} ${formatUnitCompletionAnnouncement(
+                newlyCompleted.rows,
+                newlyCompleted.cols,
+                newlyCompleted.boxes,
+              )}`.trim(),
+            );
           } else {
             servicesRef.current.audio.playSfx('hint');
+            setAnnouncement(applyMessage);
           }
         }
         setActiveHint({ kind: 'idle' });
-        setCheckMessage(
-          step.placements.length > 0 ? 'Applied hint placement.' : 'Applied hint eliminations.',
-        );
+        setCheckMessage(applyMessage);
         applyAndSave(next);
       } else {
         servicesRef.current.audio.playSfx('tap');
+        const noticeMsg =
+          'Turn on Auto-Show or add candidate notes to see elimination changes directly on empty cells.';
         setActiveHint({
           kind: 'notice',
-          message:
-            'Turn on Auto-Show or add candidate notes to see elimination changes directly on empty cells.',
+          message: noticeMsg,
         });
+        setAnnouncement(noticeMsg);
       }
     },
     [applyAndSave, triggerPop, triggerUnitSweep],
@@ -738,6 +819,10 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
       if (!shouldApplyStep) {
         servicesRef.current.audio.playSfx('tap');
         setActiveHint(next);
+        if (next.kind === 'step') {
+          const msg = formatHintTierMessage(next.step, next.tier);
+          setAnnouncement(`${msg.headline}. ${msg.detail}`);
+        }
         return;
       }
       applyHintStep(activeHint.step);
@@ -762,23 +847,33 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
 
       if (nextHint.kind === 'step') {
         servicesRef.current.audio.playSfx('hint');
+        const msg = formatHintTierMessage(nextHint.step, nextHint.tier);
+        setAnnouncement(`${msg.headline}. ${msg.detail}`);
         const recorded = reduceSudoku(snapshot, sudokuActions.recordHintViewed());
         if (recorded !== snapshot) {
           applyAndSave(recorded);
         }
       } else if (nextHint.kind === 'issue') {
         servicesRef.current.audio.playSfx('conflict');
+        setAnnouncement(
+          `${nextHint.status === 'conflict' ? 'Peer conflict found' : 'Wrong entry found'}: ${nextHint.message}`,
+        );
       } else {
         servicesRef.current.audio.playSfx('tap');
+        if (nextHint.kind === 'notice') {
+          setAnnouncement(nextHint.message);
+        }
       }
     } catch (err: unknown) {
       if (reqId !== hintRequestSeqRef.current) {
         return;
       }
+      const errMsg = err instanceof Error ? err.message : 'Unable to compute hint right now.';
       setActiveHint({
         kind: 'notice',
-        message: err instanceof Error ? err.message : 'Unable to compute hint right now.',
+        message: errMsg,
       });
+      setAnnouncement(errMsg);
     }
   }, [activeHint, applyAndSave, applyHintStep, generatingPuzzle]);
 
@@ -829,6 +924,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
     }
 
     lastCompletedIdRef.current = null;
+    lastSelectedCellRef.current = null;
     const fresh = createSudokuState(nextPuzzle, { mode: 'standard' });
     servicesRef.current.audio.playSfx('tap');
     applyAndSave(fresh);
@@ -983,8 +1079,17 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
       </p>
     </div>
   ) : confirmNewPuzzle ? (
-    <div className="hs-sudoku-overlay" role="alert" aria-label="Start new puzzle confirmation">
-      <p className="hs-sudoku-curtain-title">New Puzzle?</p>
+    <div
+      ref={confirmDialogRef}
+      className="hs-sudoku-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={confirmTitleId}
+      tabIndex={-1}
+    >
+      <h2 id={confirmTitleId} className="hs-sudoku-curtain-title">
+        New Puzzle?
+      </h2>
       <p className="hs-sudoku-curtain-subtitle">
         Start a fresh {formatDifficultyLabel(difficulty)} puzzle?
       </p>
@@ -1080,7 +1185,17 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
 
   return (
     <div className="hs-sudoku-root">
-      <header className="hs-sudoku-hud">
+      <div
+        className="hs-sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        data-testid="sudoku-live-announcer"
+      >
+        {announcement}
+      </div>
+
+      <div className="hs-sudoku-hud">
         <div className="hs-sudoku-hud-group">
           <button
             type="button"
@@ -1106,9 +1221,10 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
             {formatElapsedTime(state.elapsedMs)}
           </span>
           <button
+            ref={statsButtonRef}
             type="button"
             className="hs-sudoku-hud-btn"
-            aria-label="Statistics"
+            aria-label="Stats"
             onClick={() => {
               services.audio.playSfx('tap');
               setStatsOpen(true);
@@ -1118,6 +1234,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
             <span className="hs-sudoku-hud-label">Stats</span>
           </button>
           <button
+            ref={pauseButtonRef}
             type="button"
             className="hs-sudoku-hud-btn"
             aria-label={state.paused ? 'Resume' : 'Pause'}
@@ -1129,6 +1246,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
           </button>
           {mode === 'standard' ? (
             <button
+              ref={newPuzzleBtnRef}
               type="button"
               className="hs-sudoku-hud-btn"
               aria-label="New Puzzle"
@@ -1139,7 +1257,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
             </button>
           ) : null}
         </div>
-      </header>
+      </div>
 
       <div className="hs-sudoku-workspace">
         <div className="hs-sudoku-board-col">
@@ -1155,6 +1273,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
             nudgeCells={nudgeEffect?.cells}
             nudgeSeq={nudgeEffect?.seq}
             victoryRipple={victoryRippleActive}
+            pauseResumeBtnRef={pauseResumeBtnRef}
             onSelectCell={handleSelectCell}
             onResume={handleTogglePause}
             stageOverlay={stageOverlay}
@@ -1164,7 +1283,6 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
             className="hs-sudoku-status-rail"
             data-testid="sudoku-status-rail"
             data-has-message={statusHeadline ? 'true' : 'false'}
-            aria-live="polite"
           >
             {statusHeadline ? (
               <>
@@ -1211,25 +1329,35 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
         </aside>
       </div>
 
-      <SudokuVictoryModal
-        open={victorySummary !== null}
-        mode={victorySummary?.mode ?? mode}
-        difficulty={victorySummary?.difficulty ?? difficulty}
-        dailyDate={victorySummary?.dailyDate ?? dailyDate}
-        elapsedMs={victorySummary?.elapsedMs ?? state.elapsedMs}
-        hintsUsed={victorySummary?.hintsUsed ?? state.hintsUsed}
-        isNewPersonalBest={victorySummary?.isNewPersonalBest ?? false}
-        onPlayAgain={() => void startNewPuzzle()}
-        onViewStats={() => setStatsOpen(true)}
-        onExitToLibrary={handleExit}
-      />
+      {victorySummary !== null ? (
+        <Suspense fallback={null}>
+          <LazySudokuVictoryModal
+            open={victorySummary !== null}
+            mode={victorySummary.mode}
+            difficulty={victorySummary.difficulty}
+            dailyDate={victorySummary.dailyDate}
+            elapsedMs={victorySummary.elapsedMs}
+            hintsUsed={victorySummary.hintsUsed}
+            isNewPersonalBest={victorySummary.isNewPersonalBest}
+            onPlayAgain={() => void startNewPuzzle()}
+            onViewStats={() => setStatsOpen(true)}
+            onExitToLibrary={handleExit}
+            onClose={() => setVictorySummary(null)}
+          />
+        </Suspense>
+      ) : null}
 
-      <SudokuStatsModal
-        open={statsOpen}
-        profileName={services.activeProfile.name}
-        stats={stats}
-        onClose={() => setStatsOpen(false)}
-      />
+      {statsOpen ? (
+        <Suspense fallback={null}>
+          <LazySudokuStatsModal
+            open={statsOpen}
+            profileName={services.activeProfile.name}
+            stats={stats}
+            returnFocusRef={victorySummary !== null ? undefined : statsButtonRef}
+            onClose={() => setStatsOpen(false)}
+          />
+        </Suspense>
+      ) : null}
 
       <div
         className="hs-sudoku-rotate-guard"
