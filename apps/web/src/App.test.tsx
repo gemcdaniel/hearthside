@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { audioService } from './audio/audioService';
@@ -17,6 +17,7 @@ describe('Hearthside AIO Shell', () => {
   });
 
   afterEach(async () => {
+    cleanup();
     vi.unstubAllGlobals();
     audioService.resetForTests();
     await resetHearthsideDbForTests();

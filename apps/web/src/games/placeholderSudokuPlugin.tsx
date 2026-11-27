@@ -1,47 +1,10 @@
-import type { GameEvent, GamePlugin } from '@hearthside/game-core';
+import { sudokuPlugin } from '@hearthside/game-sudoku';
 import { PlaceholderGrid } from '../components/PlaceholderGrid';
 import type { GameMountProps, ShellGameEntry } from './shellRegistry';
 
-interface PlaceholderSudokuState {
-  readonly mode: string;
-}
-
-type PlaceholderSudokuEvent = GameEvent<'select_mode', string>;
-
-interface PlaceholderSudokuStats {
-  readonly gamesStarted: number;
-}
-
-export const placeholderSudokuPlugin: GamePlugin<
-  PlaceholderSudokuState,
-  PlaceholderSudokuEvent,
-  PlaceholderSudokuStats
-> = {
-  schemaVersion: 1,
-  metadata: {
-    id: 'sudoku',
-    name: 'Sudoku',
-    description: 'Classic 9x9 logic puzzle with smart notes and progressive hints.',
-    category: 'puzzle',
-    icon: 'sudoku-grid',
-    supportedModes: [
-      { id: 'continue', label: 'Continue' },
-      { id: 'daily', label: 'Daily Puzzle' },
-      { id: 'new', label: 'New Game' },
-    ],
-    supportsOffline: true,
-  },
-  createInitialState: () => ({ mode: 'new' }),
-  reduce: (state, event) => (event.type === 'select_mode' ? { mode: event.payload } : state),
-  serializeState: (state) => JSON.stringify(state),
-  deserializeState: (raw) => JSON.parse(raw) as PlaceholderSudokuState,
-  extractStats: () => ({ gamesStarted: 0 }),
-};
-
 function PlaceholderSudokuMount({ services, initialMode }: GameMountProps) {
   const modeLabel =
-    placeholderSudokuPlugin.metadata.supportedModes.find((m) => m.id === initialMode)?.label ??
-    'Puzzle Board';
+    sudokuPlugin.metadata.supportedModes.find((m) => m.id === initialMode)?.label ?? 'Puzzle Board';
 
   function handleExit() {
     services.audio.playSfx('tap');
@@ -72,7 +35,7 @@ function PlaceholderSudokuMount({ services, initialMode }: GameMountProps) {
 }
 
 export const placeholderSudokuEntry: ShellGameEntry = {
-  metadata: placeholderSudokuPlugin.metadata,
-  schemaVersion: placeholderSudokuPlugin.schemaVersion,
+  metadata: sudokuPlugin.metadata,
+  schemaVersion: sudokuPlugin.schemaVersion,
   Component: PlaceholderSudokuMount,
 };

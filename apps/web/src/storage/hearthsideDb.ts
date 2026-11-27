@@ -72,6 +72,8 @@ function getIndexedDbFactory(): IDBFactory {
   return globalThis.indexedDB;
 }
 
+const openDbConnections = new Set<IDBDatabase>();
+
 export function openHearthsideDb(): Promise<IDBDatabase> {
   const factory = getIndexedDbFactory();
 
@@ -109,7 +111,15 @@ export function openHearthsideDb(): Promise<IDBDatabase> {
       }
     };
 
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+      openDbConnections.add(db);
+      db.onversionchange = () => {
+        db.close();
+        openDbConnections.delete(db);
+      };
+      resolve(db);
+    };
     request.onerror = () =>
       reject(request.error ?? new Error('Failed to open hearthside-db IndexedDB database.'));
   });
@@ -136,6 +146,7 @@ async function withDb<T>(fn: (db: IDBDatabase) => Promise<T>): Promise<T> {
     return await fn(db);
   } finally {
     db.close();
+    openDbConnections.delete(db);
   }
 }
 
@@ -787,6 +798,10 @@ export async function resetHearthsideDbForTests(): Promise<void> {
   }
   if (typeof globalThis.indexedDB === 'undefined') {
     return;
+  }
+  for (const db of openDbConnections) {
+    db.close();
+    openDbConnections.delete(db);
   }
   await new Promise<void>((resolve, reject) => {
     const req = globalThis.indexedDB.deleteDatabase(HEARTHSIDE_DB_NAME);
