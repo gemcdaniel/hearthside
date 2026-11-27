@@ -285,15 +285,20 @@ func TestSolveLogicalEasyPuzzleAndNoStepOnSolved(t *testing.T) {
 		t.Fatalf("ParseBoardString failed: %v", err)
 	}
 
-	solved, steps, ok := SolveLogical(board)
-	if !ok {
+	solved, steps := SolveLogical(&board)
+	if !solved {
 		t.Fatalf("expected easy puzzle to solve logically, stopped after %d steps", len(steps))
 	}
-	if !solved.IsSolved() {
-		t.Fatal("expected solved board to report IsSolved() == true")
-	}
 
-	step, found, err := NextStep(solved)
+	step, found, err := NextStep(board)
+	if err != nil || !found {
+		t.Fatalf("expected initial step on easy puzzle, got found=%v step=%+v err=%v", found, step, err)
+	}
+	solvedBoard, ok, err := board.SolveBacktrack()
+	if err != nil || !ok {
+		t.Fatalf("SolveBacktrack failed: ok=%v err=%v", ok, err)
+	}
+	step, found, err = NextStep(solvedBoard)
 	if err != nil || found {
 		t.Fatalf("expected no step on solved board, got found=%v step=%+v err=%v", found, step, err)
 	}

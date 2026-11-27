@@ -37,6 +37,16 @@ const (
 	TechniqueNakedTriple Technique = "naked_triple"
 	// TechniqueHiddenTriple identifies three digits in a unit restricted to three cells total.
 	TechniqueHiddenTriple Technique = "hidden_triple"
+	// TechniqueSkyscraper identifies two parallel lines sharing one base column/row for a digit.
+	TechniqueSkyscraper Technique = "skyscraper"
+	// TechniqueXWing identifies two parallel lines sharing the exact same two candidate columns/rows for a digit.
+	TechniqueXWing Technique = "x_wing"
+	// TechniqueWWing identifies two identical bivalue cells connected by a strong link on one digit.
+	TechniqueWWing Technique = "w_wing"
+	// TechniqueXYWing identifies a bivalue pivot linked to two bivalue pincers sharing a common elimination digit.
+	TechniqueXYWing Technique = "xy_wing"
+	// TechniqueSwordfish identifies three parallel lines whose candidates for a digit span only three orthogonal lines.
+	TechniqueSwordfish Technique = "swordfish"
 )
 
 // Difficulty returns the difficulty tier for this technique.
@@ -558,9 +568,14 @@ var stepFinders = []stepFinder{
 	findHiddenPair,
 	findNakedTriple,
 	findHiddenTriple,
+	findSkyscraper,
+	findXWing,
+	findWWing,
+	findXYWing,
+	findSwordfish,
 }
 
-// NextStep evaluates Easy and Medium techniques in ascending priority order on the current board
+// NextStep evaluates Easy, Medium, and Hard techniques in ascending priority order on the current board
 // and returns the first applicable step, or (Step{}, false, nil) if none apply.
 func NextStep(b Board) (Step, bool, error) {
 	if err := b.Validate(); err != nil {
@@ -594,23 +609,26 @@ func (b *Board) ApplyStep(step Step) error {
 	return nil
 }
 
-// SolveLogical iteratively applies NextStep until the board is solved or no implemented technique applies.
-func SolveLogical(b Board) (Board, []Step, bool) {
-	if b.HasConflict() {
-		return b, nil, false
+// SolveLogical repeatedly calls NextStep on a working copy of b, applies only the returned
+// placements and eliminations without consulting any backtracking solution, and stops when
+// the board is solved or no logical step applies.
+func SolveLogical(b *Board) (solved bool, steps []Step) {
+	if b == nil || b.Validate() != nil {
+		return false, nil
 	}
 
-	b.RecomputeCandidates()
-	steps := make([]Step, 0, BoardSize)
-	for !b.IsSolved() {
-		step, ok, err := NextStep(b)
+	work := *b
+	work.RecomputeCandidates()
+	steps = make([]Step, 0, BoardSize)
+	for !work.IsSolved() {
+		step, ok, err := NextStep(work)
 		if err != nil || !ok {
-			return b, steps, false
+			return false, steps
 		}
-		if err := b.ApplyStep(step); err != nil {
-			return b, steps, false
+		if err := work.ApplyStep(step); err != nil {
+			return false, steps
 		}
 		steps = append(steps, step)
 	}
-	return b, steps, true
+	return true, steps
 }
