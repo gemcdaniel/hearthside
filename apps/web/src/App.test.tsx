@@ -32,12 +32,10 @@ describe('Hearthside AIO Shell', () => {
     expect(await screen.findByText('Welcome, Player 1')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Sudoku' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'New Game' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Easy' }));
 
     expect(await screen.findByRole('button', { name: 'Back to Library' })).toBeInTheDocument();
-    expect(
-      screen.getByRole('grid', { name: '9 by 9 Sudoku placeholder grid' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('grid', { name: '9 by 9 Sudoku board' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Back to Library' }));
     expect(await screen.findByText('Welcome, Player 1')).toBeInTheDocument();

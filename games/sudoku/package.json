@@ -8,6 +8,9 @@
   "dependencies": {
     "@hearthside/game-core": "workspace:*"
   },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint --config ../../eslint.config.js .",

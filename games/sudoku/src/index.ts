@@ -83,3 +83,7 @@ export type {
   ToggleNotesModeEvent,
   UndoEvent,
 } from './engine/types';
+export { SudokuBoard, type SudokuBoardProps } from './ui/SudokuBoard';
+export { SudokuControls, type SudokuControlsProps } from './ui/SudokuControls';
+export { SudokuGame, type SudokuGameProps } from './ui/SudokuGame';
+export { formatElapsedTime } from './ui/formatTime';

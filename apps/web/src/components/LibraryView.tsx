@@ -1,10 +1,23 @@
-import type { GameMetadata, Profile } from '@hearthside/game-core';
+import type { GameMetadata, Profile, SaveSlotSummary } from '@hearthside/game-core';
 import { ProfileAvatar } from './ProfileAvatar';
+
+export type SavedSlotsByGame = Readonly<Record<string, Readonly<Record<string, SaveSlotSummary>>>>;
 
 interface LibraryViewProps {
   readonly games: readonly GameMetadata[];
   readonly activeProfile: Profile;
+  readonly savedSlotsByGame: SavedSlotsByGame;
   readonly onLaunchGame: (gameId: string, modeId?: string) => void;
+}
+
+function formatResumeTime(elapsedMs?: number): string {
+  if (elapsedMs === undefined || !Number.isFinite(elapsedMs)) {
+    return '';
+  }
+  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
 function renderGameIcon(icon: string) {
@@ -44,7 +57,12 @@ function renderGameIcon(icon: string) {
   );
 }
 
-export function LibraryView({ games, activeProfile, onLaunchGame }: LibraryViewProps) {
+export function LibraryView({
+  games,
+  activeProfile,
+  savedSlotsByGame,
+  onLaunchGame,
+}: LibraryViewProps) {
   return (
     <section className="hs-library" aria-label="Game Library">
       <div className="hs-library-welcome">
@@ -64,37 +82,53 @@ export function LibraryView({ games, activeProfile, onLaunchGame }: LibraryViewP
       </div>
 
       <div className="hs-game-grid">
-        {games.map((game) => (
-          <article key={game.id} className="hs-game-card">
-            <div className="hs-game-card-top">
-              <div className="hs-game-icon">{renderGameIcon(game.icon)}</div>
-              <div className="hs-game-card-info">
-                <div className="hs-game-card-badges">
-                  <h3 className="hs-game-card-title">{game.name}</h3>
-                  {game.supportsOffline ? (
-                    <span className="hs-badge" data-tone="success">
-                      Offline
-                    </span>
-                  ) : null}
+        {games.map((game) => {
+          const gameSaves = savedSlotsByGame[game.id] ?? {};
+          return (
+            <article key={game.id} className="hs-game-card">
+              <div className="hs-game-card-top">
+                <div className="hs-game-icon">{renderGameIcon(game.icon)}</div>
+                <div className="hs-game-card-info">
+                  <div className="hs-game-card-badges">
+                    <h3 className="hs-game-card-title">{game.name}</h3>
+                    {game.supportsOffline ? (
+                      <span className="hs-badge" data-tone="success">
+                        Offline
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="hs-game-card-desc">{game.description}</p>
                 </div>
-                <p className="hs-game-card-desc">{game.description}</p>
               </div>
-            </div>
 
-            <div className="hs-btn-group">
-              {game.supportedModes.map((mode, index) => (
-                <button
-                  key={mode.id}
-                  type="button"
-                  className={index === 0 ? 'hs-btn hs-btn-primary' : 'hs-btn hs-btn-secondary'}
-                  onClick={() => onLaunchGame(game.id, mode.id)}
-                >
-                  {mode.label}
-                </button>
-              ))}
-            </div>
-          </article>
-        ))}
+              <div className="hs-btn-group">
+                {game.supportedModes.map((mode, index) => {
+                  const saveSummary = gameSaves[mode.id];
+                  const resumeTime = formatResumeTime(saveSummary?.elapsedMs);
+                  return (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      className={
+                        index === 0 || saveSummary
+                          ? 'hs-btn hs-btn-primary hs-mode-btn'
+                          : 'hs-btn hs-btn-secondary hs-mode-btn'
+                      }
+                      onClick={() => onLaunchGame(game.id, mode.id)}
+                    >
+                      <span>{mode.label}</span>
+                      {saveSummary ? (
+                        <span className="hs-mode-resume">
+                          Resume{resumeTime ? ` · ${resumeTime}` : ''}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </article>
+          );
+        })}
       </div>
     </section>
   );

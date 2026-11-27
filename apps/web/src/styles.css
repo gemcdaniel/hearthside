@@ -21,7 +21,7 @@ body {
 
 .hs-shell {
   width: 100%;
-  max-width: 46rem;
+  max-width: 64rem;
   margin: 0 auto;
   padding: var(--hs-space-4);
   display: flex;
@@ -642,6 +642,22 @@ body {
   margin: 0;
   font-size: var(--hs-text-sm);
   color: var(--hs-text-muted);
+}
+
+.hs-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--hs-space-2);
+}
+
+.hs-mode-resume {
+  font-size: var(--hs-text-xs);
+  font-weight: 700;
+  padding: 0.125rem 0.45rem;
+  border-radius: 999px;
+  background-color: var(--hs-surface);
+  color: var(--hs-accent);
+  font-variant-numeric: tabular-nums;
 }
 
 .hs-game-view {

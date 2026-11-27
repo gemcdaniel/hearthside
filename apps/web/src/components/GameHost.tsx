@@ -49,7 +49,11 @@ export function GameHost({
 
   return (
     <section aria-label={entry.metadata.name}>
-      <GameComponent services={services} initialMode={initialMode} />
+      <GameComponent
+        key={`${activeProfile.id}:${gameId}:${initialMode ?? ''}`}
+        services={services}
+        initialMode={initialMode}
+      />
     </section>
   );
 }

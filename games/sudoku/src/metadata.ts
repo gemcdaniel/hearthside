@@ -7,9 +7,9 @@ export const sudokuMetadata: GameMetadata = {
   category: 'puzzle',
   icon: 'sudoku-grid',
   supportedModes: [
-    { id: 'continue', label: 'Continue', description: 'Resume an in-progress puzzle' },
-    { id: 'daily', label: 'Daily Puzzle', description: 'Today’s offline challenge' },
-    { id: 'new', label: 'New Game', description: 'Pick Easy, Medium, or Hard' },
+    { id: 'easy', label: 'Easy', description: 'Naked & hidden singles' },
+    { id: 'medium', label: 'Medium', description: 'Pairs, triples & line reductions' },
+    { id: 'hard', label: 'Hard', description: 'X-Wing, Wings & Swordfish' },
   ],
   supportsOffline: true,
 };

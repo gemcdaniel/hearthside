@@ -73,6 +73,8 @@ function getIndexedDbFactory(): IDBFactory {
 }
 
 const openDbConnections = new Set<IDBDatabase>();
+let pendingSettingsWrite: Promise<void> = Promise.resolve();
+let activeInitPromise: Promise<InitializedStorageState> | null = null;
 
 export function openHearthsideDb(): Promise<IDBDatabase> {
   const factory = getIndexedDbFactory();
@@ -214,6 +216,22 @@ function isStoredProfileSettingsRecord(value: unknown): value is StoredProfileSe
   return isNonEmptyString(value.profileId) && isProfileSettings(value.settings);
 }
 
+function isSaveSlotSummary(value: unknown): boolean {
+  if (value === undefined) {
+    return true;
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    (value.elapsedMs === undefined ||
+      (typeof value.elapsedMs === 'number' &&
+        Number.isFinite(value.elapsedMs) &&
+        value.elapsedMs >= 0)) &&
+    (value.label === undefined || typeof value.label === 'string')
+  );
+}
+
 function isSaveEnvelope(value: unknown): value is SaveEnvelope {
   if (!isRecord(value)) {
     return false;
@@ -226,6 +244,7 @@ function isSaveEnvelope(value: unknown): value is SaveEnvelope {
     isNonEmptyString(value.gameId) &&
     isNonEmptyString(value.slot) &&
     isNonEmptyString(value.updatedAt) &&
+    isSaveSlotSummary(value.summary) &&
     'payload' in value
   );
 }
@@ -314,7 +333,7 @@ export async function getProfile(profileId: string): Promise<Profile | null> {
   });
 }
 
-export async function getProfileSettings(profileId: string): Promise<ProfileSettings> {
+async function readProfileSettingsFromDb(profileId: string): Promise<ProfileSettings> {
   return withDb(async (db) => {
     const tx = db.transaction(STORE_SETTINGS, 'readonly');
     const raw: unknown = await requestToPromise(
@@ -328,6 +347,11 @@ export async function getProfileSettings(profileId: string): Promise<ProfileSett
   });
 }
 
+export async function getProfileSettings(profileId: string): Promise<ProfileSettings> {
+  await pendingSettingsWrite.catch(() => {});
+  return readProfileSettingsFromDb(profileId);
+}
+
 export async function saveProfileSettings(
   profileId: string,
   settings: ProfileSettings,
@@ -335,12 +359,20 @@ export async function saveProfileSettings(
   if (!isProfileSettings(settings)) {
     throw new Error('Invalid profile settings payload.');
   }
-  await withDb(async (db) => {
-    const tx = db.transaction(STORE_SETTINGS, 'readwrite');
-    const record: StoredProfileSettingsRecord = { profileId, settings };
-    tx.objectStore(STORE_SETTINGS).put(record);
-    await transactionDone(tx, 'Save profile settings');
-  });
+  const initBarrier = activeInitPromise ?? Promise.resolve();
+  const writeOp = pendingSettingsWrite
+    .catch(() => {})
+    .then(() => initBarrier.catch(() => {}))
+    .then(() =>
+      withDb(async (db) => {
+        const tx = db.transaction(STORE_SETTINGS, 'readwrite');
+        const record: StoredProfileSettingsRecord = { profileId, settings };
+        tx.objectStore(STORE_SETTINGS).put(record);
+        await transactionDone(tx, 'Save profile settings');
+      }),
+    );
+  pendingSettingsWrite = writeOp;
+  await writeOp;
 }
 
 export interface CreateProfileInput {
@@ -443,53 +475,65 @@ export async function deleteProfile(profileId: string): Promise<void> {
 }
 
 export async function ensureInitialized(): Promise<InitializedStorageState> {
-  const defaultMode = getSystemThemeMode();
+  if (activeInitPromise) {
+    return activeInitPromise;
+  }
 
-  const existing = await listProfiles();
-  if (existing.length === 0) {
-    const seedProfile: Profile = {
-      id: DEFAULT_PROFILE_ID,
-      name: DEFAULT_PROFILE_NAME,
-      avatarId: 'hearth',
-      accentColor: 'cobalt',
-      createdAt: new Date().toISOString(),
-    };
-    const seedSettings = createDefaultProfileSettings(defaultMode);
+  const runInit = async (): Promise<InitializedStorageState> => {
+    await pendingSettingsWrite.catch(() => {});
+    const defaultMode = getSystemThemeMode();
 
-    await withDb(async (db) => {
-      const tx = db.transaction([STORE_PROFILES, STORE_SETTINGS], 'readwrite');
-      tx.objectStore(STORE_PROFILES).put(seedProfile);
-      tx.objectStore(STORE_SETTINGS).put({
-        profileId: seedProfile.id,
-        settings: seedSettings,
+    const existing = await listProfiles();
+    if (existing.length === 0) {
+      const seedProfile: Profile = {
+        id: DEFAULT_PROFILE_ID,
+        name: DEFAULT_PROFILE_NAME,
+        avatarId: 'hearth',
+        accentColor: 'cobalt',
+        createdAt: new Date().toISOString(),
+      };
+      const seedSettings = createDefaultProfileSettings(defaultMode);
+
+      await withDb(async (db) => {
+        const tx = db.transaction([STORE_PROFILES, STORE_SETTINGS], 'readwrite');
+        tx.objectStore(STORE_PROFILES).put(seedProfile);
+        tx.objectStore(STORE_SETTINGS).put({
+          profileId: seedProfile.id,
+          settings: seedSettings,
+        });
+        await transactionDone(tx, 'Seed default profile');
       });
-      await transactionDone(tx, 'Seed default profile');
-    });
 
-    setStoredActiveProfileId(seedProfile.id);
+      setStoredActiveProfileId(seedProfile.id);
+      return {
+        profiles: [seedProfile],
+        activeProfile: seedProfile,
+        settings: seedSettings,
+      };
+    }
+
+    const storedId = getStoredActiveProfileId();
+    const firstProfile = existing[0];
+    if (!firstProfile) {
+      throw new Error('Unexpected empty profiles list after initialization.');
+    }
+    const activeProfile = existing.find((p) => p.id === storedId) ?? firstProfile;
+    if (activeProfile.id !== storedId) {
+      setStoredActiveProfileId(activeProfile.id);
+    }
+    const settings = await readProfileSettingsFromDb(activeProfile.id);
+
     return {
-      profiles: [seedProfile],
-      activeProfile: seedProfile,
-      settings: seedSettings,
+      profiles: existing,
+      activeProfile,
+      settings,
     };
-  }
-
-  const storedId = getStoredActiveProfileId();
-  const firstProfile = existing[0];
-  if (!firstProfile) {
-    throw new Error('Unexpected empty profiles list after initialization.');
-  }
-  const activeProfile = existing.find((p) => p.id === storedId) ?? firstProfile;
-  if (activeProfile.id !== storedId) {
-    setStoredActiveProfileId(activeProfile.id);
-  }
-  const settings = await getProfileSettings(activeProfile.id);
-
-  return {
-    profiles: existing,
-    activeProfile,
-    settings,
   };
+
+  activeInitPromise = runInit().finally(() => {
+    activeInitPromise = null;
+  });
+  return activeInitPromise;
 }
 
 export async function getSave<TPayload = unknown>(
@@ -789,6 +833,10 @@ export async function importAllData(json: string): Promise<HearthsideExportBundl
 }
 
 export async function resetHearthsideDbForTests(): Promise<void> {
+  await activeInitPromise?.catch(() => {});
+  activeInitPromise = null;
+  await pendingSettingsWrite.catch(() => {});
+  pendingSettingsWrite = Promise.resolve();
   if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
     try {
       window.localStorage.removeItem(ACTIVE_PROFILE_STORAGE_KEY);

@@ -7,7 +7,7 @@ describe('sudoku game metadata', () => {
     expect(sudokuMetadata.name).toBe('Sudoku');
     expect(sudokuMetadata.category).toBe('puzzle');
     expect(sudokuMetadata.icon).toBe('sudoku-grid');
-    expect(sudokuMetadata.supportedModes.map((m) => m.id)).toEqual(['continue', 'daily', 'new']);
+    expect(sudokuMetadata.supportedModes.map((m) => m.id)).toEqual(['easy', 'medium', 'hard']);
     expect(sudokuMetadata.supportsOffline).toBe(true);
   });
 });

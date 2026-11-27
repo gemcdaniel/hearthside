@@ -41,9 +41,19 @@
   --hs-cell-conflict-bg: #fee2e2;
   --hs-cell-conflict-text: #991b1b;
   --hs-cell-conflict-border: #b91c1c;
+  --hs-cell-wrong-bg: #f3e8ff;
+  --hs-cell-wrong-text: #6b21a8;
+  --hs-cell-wrong-border: #9333ea;
   --hs-cell-given-text: #0f172a;
   --hs-cell-entry-text: #1d4ed8;
   --hs-cell-notes-text: #475569;
+  --hs-cell-autoshow-notes-text: #0369a1;
+  --hs-cell-note-match-bg: #dbeafe;
+  --hs-cell-note-match-text: #1e3a8a;
+  --hs-autoshow-bg: #e0f2fe;
+  --hs-autoshow-text: #075985;
+  --hs-autoshow-border: #0284c7;
+  --hs-curtain-bg: #f1f5f9;
 
   /* Interactive & status tokens */
   --hs-accent: #1d4ed8;
@@ -132,9 +142,19 @@
   --hs-cell-conflict-bg: #450a0a;
   --hs-cell-conflict-text: #fecaca;
   --hs-cell-conflict-border: #f87171;
+  --hs-cell-wrong-bg: #3b0764;
+  --hs-cell-wrong-text: #f3e8ff;
+  --hs-cell-wrong-border: #c084fc;
   --hs-cell-given-text: #f8fafc;
   --hs-cell-entry-text: #93c5fd;
   --hs-cell-notes-text: #cbd5e1;
+  --hs-cell-autoshow-notes-text: #7dd3fc;
+  --hs-cell-note-match-bg: #1e3a8a;
+  --hs-cell-note-match-text: #e0f2fe;
+  --hs-autoshow-bg: #0c4a6e;
+  --hs-autoshow-text: #e0f2fe;
+  --hs-autoshow-border: #38bdf8;
+  --hs-curtain-bg: #1e293b;
 
   --hs-accent: #60a5fa;
   --hs-accent-hover: #93c5fd;
@@ -190,9 +210,19 @@
   --hs-cell-conflict-bg: #fee2e2;
   --hs-cell-conflict-text: #7f1d1d;
   --hs-cell-conflict-border: #b91c1c;
+  --hs-cell-wrong-bg: #f3e8ff;
+  --hs-cell-wrong-text: #6b21a8;
+  --hs-cell-wrong-border: #9333ea;
   --hs-cell-given-text: #2b1e16;
   --hs-cell-entry-text: #9a3412;
   --hs-cell-notes-text: #5e493a;
+  --hs-cell-autoshow-notes-text: #9a3412;
+  --hs-cell-note-match-bg: #fde68a;
+  --hs-cell-note-match-text: #78350f;
+  --hs-autoshow-bg: #fef3c7;
+  --hs-autoshow-text: #78350f;
+  --hs-autoshow-border: #d97706;
+  --hs-curtain-bg: #efe5d3;
 
   /* Warm terracotta/amber accent */
   --hs-accent: #9a3412;
@@ -256,9 +286,19 @@
   --hs-cell-conflict-bg: #4c1414;
   --hs-cell-conflict-text: #fecaca;
   --hs-cell-conflict-border: #f87171;
+  --hs-cell-wrong-bg: #3b0764;
+  --hs-cell-wrong-text: #f3e8ff;
+  --hs-cell-wrong-border: #c084fc;
   --hs-cell-given-text: #faf3e8;
   --hs-cell-entry-text: #fcd34d;
   --hs-cell-notes-text: #d6c6b4;
+  --hs-cell-autoshow-notes-text: #fcd34d;
+  --hs-cell-note-match-bg: #78350f;
+  --hs-cell-note-match-text: #fef3c7;
+  --hs-autoshow-bg: #4a2c16;
+  --hs-autoshow-text: #fef3c7;
+  --hs-autoshow-border: #f59e0b;
+  --hs-curtain-bg: #2e2420;
 
   --hs-accent: #f59e0b;
   --hs-accent-hover: #fbbf24;

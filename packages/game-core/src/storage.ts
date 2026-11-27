@@ -1,9 +1,15 @@
+export interface SaveSlotSummary {
+  readonly elapsedMs?: number;
+  readonly label?: string;
+}
+
 export interface SaveEnvelope<TPayload = unknown> {
   readonly schemaVersion: number;
   readonly profileId: string;
   readonly gameId: string;
   readonly slot: string;
   readonly updatedAt: string;
+  readonly summary?: SaveSlotSummary;
   readonly payload: TPayload;
 }
 

@@ -34,4 +34,5 @@ export type {
   GameStatsRecord,
   GameStorageService,
   SaveEnvelope,
+  SaveSlotSummary,
 } from './storage';

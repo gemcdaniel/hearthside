@@ -4,12 +4,13 @@ import {
   type Profile,
   type ProfileAccentId,
   type ProfileSettings,
+  type SaveSlotSummary,
 } from '@hearthside/game-core';
 import { applyThemeToDocument } from '@hearthside/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { attachAudioUnlockListeners, audioService } from './audio/audioService';
 import { GameHost } from './components/GameHost';
-import { LibraryView } from './components/LibraryView';
+import { LibraryView, type SavedSlotsByGame } from './components/LibraryView';
 import { PwaUpdateBanner } from './components/PwaUpdateBanner';
 import { SettingsModal } from './components/SettingsModal';
 import { ShellHeader } from './components/ShellHeader';
@@ -21,6 +22,7 @@ import {
   deleteProfile,
   ensureInitialized,
   getProfileSettings,
+  listSavesForProfileGame,
   requestStoragePersistence,
   saveProfileSettings,
   setStoredActiveProfileId,
@@ -61,6 +63,7 @@ export function App() {
   const [activeProfile, setActiveProfile] = useState<Profile>(FALLBACK_PROFILE);
   const [settings, setSettings] = useState<ProfileSettings>(createInitialFallbackSettings);
   const [activeLaunch, setActiveLaunch] = useState<ActiveGameLaunch | null>(null);
+  const [savedSlotsByGame, setSavedSlotsByGame] = useState<SavedSlotsByGame>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
   const initPromiseRef = useRef<Promise<void> | null>(null);
 
@@ -69,6 +72,30 @@ export function App() {
     activeLaunch !== null
       ? (shellGameRegistry.get(activeLaunch.gameId)?.metadata.name ?? null)
       : null;
+
+  const refreshSavedSlots = useCallback(async (profileId: string) => {
+    const entries = shellGameRegistry.listMetadata();
+    const map: Record<string, Record<string, SaveSlotSummary>> = {};
+
+    await Promise.all(
+      entries.map(async (game) => {
+        try {
+          const saves = await listSavesForProfileGame(profileId, game.id);
+          if (saves.length > 0) {
+            const slotMap: Record<string, SaveSlotSummary> = {};
+            for (const save of saves) {
+              slotMap[save.slot] = save.summary ?? {};
+            }
+            map[game.id] = slotMap;
+          }
+        } catch {
+          // Ignore unavailable IndexedDB reads in restricted environments.
+        }
+      }),
+    );
+
+    setSavedSlotsByGame(map);
+  }, []);
 
   const applyActiveProfileState = useCallback(
     (nextProfile: Profile, nextSettings: ProfileSettings) => {
@@ -79,8 +106,9 @@ export function App() {
       applyThemeToDocument(themePref);
       void saveThemePreference(themePref);
       syncAudioFromSettings(nextSettings);
+      void refreshSavedSlots(nextProfile.id);
     },
-    [],
+    [refreshSavedSlots],
   );
 
   useEffect(() => {
@@ -176,8 +204,7 @@ export function App() {
     applyThemeToDocument(themePref);
     void saveThemePreference(themePref);
     syncAudioFromSettings(next);
-    const targetProfileId = activeProfile.id;
-    void waitForInit().then(() => saveProfileSettings(targetProfileId, next));
+    void saveProfileSettings(activeProfile.id, next);
   }
 
   async function handleDataImported() {
@@ -190,6 +217,11 @@ export function App() {
   function handleLaunchGame(gameId: string, modeId?: string) {
     audioService.playSfx('tap');
     setActiveLaunch({ gameId, modeId });
+  }
+
+  function handleExitToLibrary() {
+    setActiveLaunch(null);
+    void refreshSavedSlots(activeProfile.id);
   }
 
   return (
@@ -206,7 +238,7 @@ export function App() {
         onNavigateHome={() => {
           if (activeLaunch !== null) {
             audioService.playSfx('tap');
-            setActiveLaunch(null);
+            handleExitToLibrary();
           }
         }}
       />
@@ -219,12 +251,13 @@ export function App() {
             activeProfile={activeProfile}
             settings={settings}
             audio={audioService}
-            onExitToLibrary={() => setActiveLaunch(null)}
+            onExitToLibrary={handleExitToLibrary}
           />
         ) : (
           <LibraryView
             games={games}
             activeProfile={activeProfile}
+            savedSlotsByGame={savedSlotsByGame}
             onLaunchGame={handleLaunchGame}
           />
         )}

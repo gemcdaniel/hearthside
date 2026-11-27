@@ -3,8 +3,8 @@ import {
   type GamePluginDescriptor,
   type ShellServices,
 } from '@hearthside/game-core';
+import { SudokuGame, sudokuPlugin } from '@hearthside/game-sudoku';
 import type { ComponentType } from 'react';
-import { placeholderSudokuEntry } from './placeholderSudokuPlugin';
 
 export interface GameMountProps {
   readonly services: ShellServices;
@@ -16,4 +16,8 @@ export interface ShellGameEntry extends GamePluginDescriptor {
 }
 
 export const shellGameRegistry = createGameRegistry<ShellGameEntry>();
-shellGameRegistry.register(placeholderSudokuEntry);
+shellGameRegistry.register({
+  metadata: sudokuPlugin.metadata,
+  schemaVersion: sudokuPlugin.schemaVersion,
+  Component: SudokuGame,
+});

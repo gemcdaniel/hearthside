@@ -47,6 +47,9 @@
       "dependencies": {
         "@hearthside/game-core": "workspace:*",
       },
+      "peerDependencies": {
+        "react": "^19.0.0",
+      },
     },
     "packages/game-core": {
       "name": "@hearthside/game-core",
