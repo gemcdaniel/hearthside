@@ -1420,7 +1420,11 @@ body {
 }
 
 .hs-lb-rank[data-top='1'] {
-  color: var(--hs-accent);
+  justify-content: center;
+  padding: 2px var(--hs-space-2);
+  border-radius: var(--hs-radius-pill);
+  background-color: var(--hs-accent);
+  color: var(--hs-accent-contrast);
 }
 
 .hs-lb-medal-icon {

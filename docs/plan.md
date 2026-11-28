@@ -1,8 +1,8 @@
-# Hearthside: Project Plan v1.5 (Phase 6, Run 1 Complete)
+# Hearthside: Project Plan v1.6 (Phase 6 Complete)
 
-Version 1.5, November 28, 2026. Status legend: **Confirmed** means locked by the project owner; **Proposed** means recommended default awaiting confirmation if changes are needed; **Open** means unresolved.
+Version 1.6, November 28, 2026. Status legend: **Confirmed** means locked by the project owner; **Proposed** means recommended default awaiting confirmation if changes are needed; **Open** means unresolved.
 
-Version 1.5 adds **Phase 6, Run 1 (Authoritative leaderboard backend & child-safe guardrails)** atop the Phase 5 cloud save/stats sync foundation: SQLite `0005_leaderboards.sql` (`leaderboard_entries` and profile `friends_visible`), pure-Go starter-bank lookup helpers in `engine/sudoku`, strict nickname guardrails (`ValidateNickname`), authoritative solution & bounds validation (`services/api/internal/leaderboards`), household & friends leaderboard endpoints + Today's Family Daily summary, and ADRs D35–D39.
+Version 1.6 completes **Phase 6: Leaderboards and family features** atop the Phase 5 cloud save/stats sync foundation: SQLite `0005_leaderboards.sql` (`leaderboard_entries` and profile `friends_visible`), pure-Go starter-bank lookup helpers in `engine/sudoku`, strict nickname guardrails (`ValidateNickname`), authoritative solution & bounds validation (`services/api/internal/leaderboards`), IndexedDB v5 submission outbox + `SyncManager` auto-flush, Household/Friends Leaderboards & Today's Family Daily UI, Victory rank snippet, kid-friendly Preset Nickname Picker, multi-household Playwright E2E + WCAG 2.1 AA verification, and ADRs D35–D39.
 
 ## 1. Vision and scope
 
@@ -61,7 +61,7 @@ Non-goals (Confirmed): monetization, app-store publishing, user analytics, Apple
 
 ## 3. Decisions
 
-D1 to D34 are confirmed unless noted as Proposed.
+D1 to D39 are confirmed unless noted as Proposed.
 
 **D1. Backend audience (confirmed).** Private and invite-only, for the family, on the home server, eventually reachable from the internet. Adult accounts authenticate via Email + Password (Argon2id) or generic OpenID Connect (Google or any self-hosted OIDC provider via Discovery + PKCE). The account model is settled in D9 and D27.
 
@@ -282,13 +282,13 @@ Exit met: signed-in family members receive fresh puzzles and identical daily puz
 
 Exit met: a game started on a laptop finishes cleanly on a tablet, divergent active saves prompt cleanly via Resolve Sync Conflict without silent data loss, and offline play followed by sync preserves all stats and device-local audio preferences (Section 16).
 
-### Phase 6: Leaderboards and family features
+### Phase 6: Leaderboards and family features (Completed)
 
 1. Run 1 (Completed): SQLite leaderboard schema (`0005_leaderboards.sql`), `friendsVisible` opt-in & D38 nickname validation, pure-Go starter-bank lookup helper, `services/api/internal/leaderboards` authoritative solution validation & ranking queries, authenticated leaderboard HTTP endpoints, ADRs D35–D39, and `-race` integration tests.
-2. Run 2: Offline submission outbox & cloud-sync auto-flush (D39), Leaderboard & Today's Family Daily UI (`apps/web`, `packages/ui`, `games/sudoku`), preset nickname picker, and `friendsVisible` toggle in Settings.
-3. Run 3: Multi-household Playwright E2E suite, WCAG 2.1 AA Axe audits across Clean Minimal & Warm Hearthside Light/Dark, and Phase 6 exit sign-off.
+2. Run 2 (Completed): Offline submission outbox & cloud-sync auto-flush (D39), Leaderboard & Today's Family Daily UI (`apps/web`, `packages/ui`, `games/sudoku`), preset nickname picker, and `friendsVisible` toggle in Settings.
+3. Run 3 (Completed): Multi-household Playwright E2E suite (`apps/web/e2e/leaderboards.spec.ts`), tamper rejection verification, WCAG 2.1 AA Axe audits across Clean Minimal & Warm Hearthside Light/Dark, and Phase 6 exit sign-off.
 
-Exit: household daily summary and per-puzzle/daily leaderboards work across devices with authoritative validation, parental child-visibility controls, and zero free-text sharing (Section 17).
+Exit met: household daily summary and per-puzzle/daily leaderboards work across devices with authoritative validation, parental child-visibility controls, and zero free-text sharing (Section 17).
 
 ### Phase 7: Hardening and release 2.0
 
@@ -582,7 +582,7 @@ Phase 6 adds family-friendly household and friends leaderboards with authoritati
 
 Done when: all Go `vet`, `-race` unit/HTTP integration tests, `GOOS=js GOARCH=wasm` build checks, and `golangci-lint` pass cleanly across `engine/sudoku` and `services/api`.
 
-### 17.2 Run 2: Offline outbox, Leaderboard & Family Daily UI, nickname picker, and `friendsVisible` toggle
+### 17.2 Run 2: Offline outbox, Leaderboard & Family Daily UI, nickname picker, and `friendsVisible` toggle (Completed)
 
 1. Extend `packages/game-core` and `apps/web` IndexedDB outbox with durable offline leaderboard submission queuing (`solutionGrid`, `elapsedMs`, `hintsUsed`, `completedAt`) flushed alongside cloud sync (D39).
 2. Add accessible **Today's Family Daily** summary and **Leaderboards** views (Household / Friends scope tabs, Easy / Medium / Hard / Per-Puzzle switching, `No Hints Only` toggle, zero free-text or email display).
@@ -590,19 +590,19 @@ Done when: all Go `vet`, `-race` unit/HTTP integration tests, `GOOS=js GOARCH=wa
 
 Done when: offline solves auto-submit on reconnect, UI renders cleanly across themes and viewports with zero hardcoded colors or layout shift, and Vitest unit/component tests pass.
 
-### 17.3 Run 3: Multi-household Playwright E2E, WCAG 2.1 AA audit, and Phase 6 sign-off
+### 17.3 Run 3: Multi-household Playwright E2E, WCAG 2.1 AA audit, and Phase 6 sign-off (Completed)
 
 1. Add a multi-household Playwright E2E suite verifying household daily summary, cross-household `friends` visibility, child opt-in gating (`friendsVisible`), nickname guardrails, offline win -> reconnect submission, and tampered payload rejection (`422`).
 2. Verify WCAG 2.1 AA compliance (`@axe-core/playwright`) across Clean Minimal & Warm Hearthside Light/Dark views and run the full Go + Web + E2E gate.
 
 Done when: multi-household leaderboard E2E tests pass with zero severe Axe violations and all CI checks pass.
 
-### 17.4 Phase 6 exit checklist (In Progress)
+### 17.4 Phase 6 exit checklist (Complete)
 
 - [x] Run 1: SQLite `0005_leaderboards.sql`, D35–D39 ADRs, nickname validation, `friendsVisible`, starter-bank helper, authoritative leaderboard service, HTTP endpoints, and `-race` tests complete.
-- [ ] Run 2: Offline submission outbox, Leaderboard & Family Daily UI, preset nickname picker, and `friendsVisible` toggle.
-- [ ] Run 3: Multi-household Playwright E2E, WCAG 2.1 AA audit, and Phase 6 exit sign-off.
+- [x] Run 2: Offline submission outbox, Leaderboard & Family Daily UI, preset nickname picker, and `friendsVisible` toggle complete.
+- [x] Run 3: Multi-household Playwright E2E, WCAG 2.1 AA audit, and Phase 6 exit sign-off complete.
 
 ## 18. Next step
 
-Start **Phase 6, Run 2**: offline leaderboard outbox (`packages/game-core` + `apps/web` IndexedDB), Family Daily summary & Leaderboard views, preset kid-friendly nickname picker, and `friendsVisible` parental visibility controls.
+Start **Phase 7: Hardening and release 2.0**: security review of the internet-facing server (HTTPS, rate limiting, secrets handling, patching), backup/restore drill, update/rollback procedure, and family-scale load test with privacy-safe zero-PII logs.
