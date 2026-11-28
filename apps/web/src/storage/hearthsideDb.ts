@@ -567,7 +567,8 @@ export async function saveProfileSettings(
             profileId,
             ...(prevSyncState?.lastSyncedAt ? { lastSyncedAt: prevSyncState.lastSyncedAt } : {}),
             preferencesDirty: false,
-            preferencesUpdatedAt: options.preferencesUpdatedAt ?? prevSyncState?.preferencesUpdatedAt,
+            preferencesUpdatedAt:
+              options.preferencesUpdatedAt ?? prevSyncState?.preferencesUpdatedAt,
           } satisfies ProfileSyncStateRecord);
         } else if (options?.markPreferencesDirty === true || syncedChanged) {
           tx.objectStore(STORE_PROFILE_SYNC_STATE).put({
@@ -886,12 +887,7 @@ export async function updateProfile(
 export async function deleteProfile(profileId: string): Promise<void> {
   await withDb(async (db) => {
     const tx = db.transaction(
-      [
-        ...ALL_STORES,
-        STORE_PUZZLE_RECORDS,
-        STORE_SYNC_CONFLICTS,
-        STORE_PROFILE_SYNC_STATE,
-      ],
+      [...ALL_STORES, STORE_PUZZLE_RECORDS, STORE_SYNC_CONFLICTS, STORE_PROFILE_SYNC_STATE],
       'readwrite',
     );
     const profilesStore = tx.objectStore(STORE_PROFILES);
@@ -1322,10 +1318,7 @@ export async function upsertPuzzleRecord(
   options?: { readonly dirty?: boolean },
 ): Promise<PuzzleRecordLogEntry> {
   return withDb(async (db) => {
-    const tx = db.transaction(
-      [STORE_PROFILES, STORE_PUZZLE_RECORDS, STORE_COMPLETED],
-      'readwrite',
-    );
+    const tx = db.transaction([STORE_PROFILES, STORE_PUZZLE_RECORDS, STORE_COMPLETED], 'readwrite');
     const recordsStore = tx.objectStore(STORE_PUZZLE_RECORDS);
     const [profileRaw, existingRaw] = await Promise.all([
       requestToPromise(
@@ -1339,9 +1332,7 @@ export async function upsertPuzzleRecord(
     ]);
 
     const existing = isPuzzleRecordRow(existingRaw) ? existingRaw : null;
-    const merged = existing
-      ? mergePuzzleRecord(stripPuzzleRecordDirty(existing), record)
-      : record;
+    const merged = existing ? mergePuzzleRecord(stripPuzzleRecordDirty(existing), record) : record;
     const isLinked = isProfile(profileRaw) && Boolean(profileRaw.remoteProfileId);
     const dirtyBit: 0 | 1 =
       options?.dirty !== undefined
@@ -1490,7 +1481,11 @@ export async function getProfileSyncState(
       tx.objectStore(STORE_PROFILE_SYNC_STATE).get(profileId),
       'Failed to read profile sync state.',
     );
-    if (isRecord(raw) && isNonEmptyString(raw.profileId) && typeof raw.preferencesDirty === 'boolean') {
+    if (
+      isRecord(raw) &&
+      isNonEmptyString(raw.profileId) &&
+      typeof raw.preferencesDirty === 'boolean'
+    ) {
       return raw as unknown as ProfileSyncStateRecord;
     }
     return null;

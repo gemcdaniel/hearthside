@@ -136,10 +136,7 @@ export interface PushSaveSlotRequest<TPayload = unknown> {
   readonly clientUpdatedAt: string;
 }
 
-export type SavePushResolution =
-  | 'applied'
-  | 'auto_completed_local'
-  | 'auto_completed_remote';
+export type SavePushResolution = 'applied' | 'auto_completed_local' | 'auto_completed_remote';
 
 export type PushSaveSlotResult<TPayload = unknown> =
   | {

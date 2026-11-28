@@ -1,4 +1,9 @@
-import type { AudioService, CloudSyncService, Profile, ProfileSettings } from '@hearthside/game-core';
+import type {
+  AudioService,
+  CloudSyncService,
+  Profile,
+  ProfileSettings,
+} from '@hearthside/game-core';
 import { useMemo } from 'react';
 import { shellGameRegistry } from '../games/shellRegistry';
 import { createGameStorageService } from '../storage/hearthsideDb';

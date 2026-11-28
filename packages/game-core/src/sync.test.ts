@@ -128,10 +128,7 @@ describe('packages/game-core pure sync merge helpers', () => {
     const first = mergePuzzleRecordLists(a, b);
     const repeat = mergePuzzleRecordLists(first, b);
     expect(first).toEqual(repeat);
-    expect(first.map((r) => `${r.puzzleId}:${r.status}`)).toEqual([
-      'p1:completed',
-      'p2:completed',
-    ]);
+    expect(first.map((r) => `${r.puzzleId}:${r.status}`)).toEqual(['p1:completed', 'p2:completed']);
     expect(first[1]?.dailyDate).toBe('2026-11-27');
   });
 

@@ -113,7 +113,10 @@ function canUseKeepalive(bodyStr: string | undefined, keepalive: boolean | undef
   return byteLength <= MAX_KEEPALIVE_BYTES;
 }
 
-async function performJsonFetch(path: string, options: RequestOptions = {}): Promise<RawFetchOutcome> {
+async function performJsonFetch(
+  path: string,
+  options: RequestOptions = {},
+): Promise<RawFetchOutcome> {
   if (!isNavigatorOnline()) {
     return { kind: 'offline' };
   }
@@ -469,7 +472,11 @@ export async function pushSaveSlot<TPayload = unknown>(
       return { ok: true, resolution: rec.resolution, save: rec.save };
     }
     case 'http_error': {
-      if (outcome.httpStatus === 409 && typeof outcome.payload === 'object' && outcome.payload !== null) {
+      if (
+        outcome.httpStatus === 409 &&
+        typeof outcome.payload === 'object' &&
+        outcome.payload !== null
+      ) {
         const conflictBody = outcome.payload as { readonly serverSave?: CloudSaveRecord<TPayload> };
         if (conflictBody.serverSave) {
           return { ok: false, kind: 'conflict', serverSave: conflictBody.serverSave };

@@ -753,11 +753,7 @@ export class SyncManager {
     });
   }
 
-  async resolveConflictKeepLocal(
-    profileId: string,
-    gameId: string,
-    slot: string,
-  ): Promise<void> {
+  async resolveConflictKeepLocal(profileId: string, gameId: string, slot: string): Promise<void> {
     if (!this.signedIn) {
       return;
     }
@@ -822,11 +818,7 @@ export class SyncManager {
     );
   }
 
-  async resolveConflictKeepCloud(
-    profileId: string,
-    gameId: string,
-    slot: string,
-  ): Promise<void> {
+  async resolveConflictKeepCloud(profileId: string, gameId: string, slot: string): Promise<void> {
     const conflicts = await listSyncConflicts(profileId);
     const conflict = conflicts.find((c) => c.gameId === gameId && c.slot === slot);
     if (!conflict) {

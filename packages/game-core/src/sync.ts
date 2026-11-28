@@ -87,7 +87,8 @@ export interface SyncStatusState {
   readonly lastError?: string;
 }
 
-export type SyncSaveTriggerReason = 'move' | 'pause' | 'complete' | 'visibility' | 'manual' | 'delete';
+export type SyncSaveTriggerReason =
+  'move' | 'pause' | 'complete' | 'visibility' | 'manual' | 'delete';
 
 export interface CloudSyncService {
   requestSync(): Promise<void>;
