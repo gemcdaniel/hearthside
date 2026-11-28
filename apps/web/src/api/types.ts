@@ -1,5 +1,7 @@
 import type {
   CloudSaveRecord,
+  LeaderboardSubmissionPayload,
+  LeaderboardSubmissionResult,
   PuzzleRecordLogEntry,
   SyncedProfilePreferences,
 } from '@hearthside/game-core';
@@ -46,6 +48,7 @@ export interface RemoteHouseholdProfile {
   readonly avatarId: string;
   readonly accentColor: string;
   readonly isChild: boolean;
+  readonly friendsVisible?: boolean;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -181,6 +184,20 @@ export interface PushPreferencesResponse {
   readonly applied: boolean;
 }
 
+export type SubmitLeaderboardResultOutcome =
+  | { readonly ok: true; readonly result: LeaderboardSubmissionResult }
+  | {
+      readonly ok: false;
+      readonly kind: 'rejected';
+      readonly code: string;
+      readonly message: string;
+    }
+  | {
+      readonly ok: false;
+      readonly kind: 'unauthorized' | 'offline' | 'error';
+      readonly message?: string;
+    };
+
 export interface SyncApiClient {
   pullProfileSync(
     remoteProfileId: string,
@@ -203,4 +220,8 @@ export interface SyncApiClient {
     prefs: SyncedProfilePreferences,
     options?: { readonly keepalive?: boolean },
   ): Promise<ApiResult<PushPreferencesResponse>>;
+  submitLeaderboardResult(
+    payload: LeaderboardSubmissionPayload,
+    options?: { readonly keepalive?: boolean },
+  ): Promise<SubmitLeaderboardResultOutcome>;
 }

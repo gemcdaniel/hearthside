@@ -1,7 +1,13 @@
-import type { GameMetadata, Profile, SaveSlotSummary } from '@hearthside/game-core';
+import type {
+  GameMetadata,
+  LeaderboardOpenTarget,
+  Profile,
+  SaveSlotSummary,
+} from '@hearthside/game-core';
 import { useMemo } from 'react';
 import { shellGameRegistry } from '../games/shellRegistry';
 import { createGameStorageService } from '../storage/hearthsideDb';
+import { FamilyDailyCard } from './FamilyDailyCard';
 import { ProfileAvatar } from './ProfileAvatar';
 
 export type SavedSlotsByGame = Readonly<Record<string, Readonly<Record<string, SaveSlotSummary>>>>;
@@ -11,6 +17,10 @@ interface LibraryViewProps {
   readonly activeProfile: Profile;
   readonly savedSlotsByGame: SavedSlotsByGame;
   readonly refreshVersion?: number;
+  readonly signedIn?: boolean;
+  readonly todayDateYYYYMMDD?: string;
+  readonly leaderboardRefreshVersion?: number;
+  readonly onOpenLeaderboard?: (target: LeaderboardOpenTarget) => void;
   readonly onLaunchGame: (gameId: string, modeId?: string) => void;
 }
 
@@ -66,6 +76,10 @@ export function LibraryView({
   activeProfile,
   savedSlotsByGame,
   refreshVersion = 0,
+  signedIn = false,
+  todayDateYYYYMMDD = '',
+  leaderboardRefreshVersion = 0,
+  onOpenLeaderboard,
   onLaunchGame,
 }: LibraryViewProps) {
   const storageByGame = useMemo(() => {
@@ -92,7 +106,32 @@ export function LibraryView({
             </p>
           </div>
         </div>
+        {onOpenLeaderboard && signedIn ? (
+          <button
+            type="button"
+            className="hs-btn hs-btn-secondary"
+            onClick={() =>
+              onOpenLeaderboard({
+                kind: 'daily',
+                date: todayDateYYYYMMDD || undefined,
+                difficulty: 'easy',
+              })
+            }
+          >
+            Leaderboards
+          </button>
+        ) : null}
       </div>
+
+      {onOpenLeaderboard && todayDateYYYYMMDD ? (
+        <FamilyDailyCard
+          signedIn={signedIn}
+          activeRemoteProfileId={activeProfile.remoteProfileId}
+          dateYYYYMMDD={todayDateYYYYMMDD}
+          refreshVersion={leaderboardRefreshVersion}
+          onOpenLeaderboard={onOpenLeaderboard}
+        />
+      ) : null}
 
       <div className="hs-game-grid">
         {games.map((game) => {

@@ -37,6 +37,8 @@ export interface Profile {
   readonly householdId?: string;
   /** True when linked to a login-free household child profile (D9). */
   readonly isChild?: boolean;
+  /** Whether invited friend households can see this profile on Friends leaderboards (D37). */
+  readonly friendsVisible?: boolean;
 }
 
 export interface SudokuProfileSettings {

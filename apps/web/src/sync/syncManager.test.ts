@@ -16,6 +16,7 @@ import {
   getProfileSyncState,
   getRawSave,
   linkLocalProfileToHousehold,
+  listPendingLeaderboardSubmissions,
   listPuzzleRecords,
   listSyncConflicts,
   resetHearthsideDbForTests,
@@ -92,6 +93,27 @@ function createMockApi(overrides: Partial<SyncApiClient> = {}): SyncApiClient {
           profileId: 'remote-p1',
           serverUpdatedAt: '2026-11-27T16:00:02.000Z',
         },
+      },
+    })),
+    submitLeaderboardResult: vi.fn().mockImplementation(async (payload) => ({
+      ok: true,
+      result: {
+        created: true,
+        entry: {
+          rank: 1,
+          profileId: payload.profileId,
+          profileName: 'Alex',
+          avatarId: 'hearth',
+          accentColor: 'cobalt',
+          isChild: false,
+          householdName: 'Oakwood',
+          isOwnHousehold: true,
+          elapsedMs: payload.elapsedMs,
+          hintsUsed: payload.hintsUsed,
+          completedAt: payload.completedAt,
+        },
+        householdRank: 1,
+        totalHouseholdEntries: 1,
       },
     })),
     ...overrides,
@@ -574,5 +596,93 @@ describe('SyncManager background orchestration and conflict flows', () => {
       totalHintsUsed: 1,
       dailyCompletedDates: ['2026-11-27'],
     });
+  });
+
+  it('queues, submits, evicts invalid outbox items, and flushes offline leaderboard results on reconnect', async () => {
+    vi.stubGlobal('navigator', { onLine: true });
+    const init = await ensureInitialized();
+    const localId = init.activeProfile.id;
+    await linkLocalProfileToHousehold(localId, {
+      id: 'remote-p1',
+      householdId: 'hh-1',
+      isChild: false,
+    });
+
+    const onLeaderboardSubmitted = vi.fn();
+    const submitMock = vi.fn().mockResolvedValue({
+      ok: true,
+      result: {
+        created: true,
+        entry: {
+          rank: 1,
+          profileId: 'remote-p1',
+          profileName: 'Alex',
+          avatarId: 'hearth',
+          accentColor: 'cobalt',
+          isChild: false,
+          householdName: 'Oakwood',
+          isOwnHousehold: true,
+          elapsedMs: 42_000,
+          hintsUsed: 0,
+          completedAt: '2026-11-28T10:00:00.000Z',
+        },
+        householdRank: 1,
+        totalHouseholdEntries: 2,
+      },
+    });
+
+    const api = createMockApi({ submitLeaderboardResult: submitMock });
+    const manager = new SyncManager({ api, onLeaderboardSubmitted });
+    manager.setSessionActive(true);
+    manager.setActiveProfileId(localId);
+
+    const lbService = manager.createGameLeaderboardService(localId, 'sudoku', vi.fn());
+    const outcome = await lbService.submitResult({
+      puzzleId: 'daily-2026-11-28-easy',
+      mode: 'daily',
+      dailyDate: '2026-11-28',
+      difficulty: 'easy',
+      solutionGrid:
+        '723968154549371682186254379432716598615489237978532416257843961391627845864195723',
+      elapsedMs: 42_000,
+      hintsUsed: 0,
+      completedAt: '2026-11-28T10:00:00.000Z',
+    });
+
+    expect(outcome).toMatchObject({
+      status: 'submitted',
+      result: { householdRank: 1, totalHouseholdEntries: 2 },
+    });
+    expect(submitMock).toHaveBeenCalledTimes(1);
+    expect(onLeaderboardSubmitted).toHaveBeenCalledTimes(1);
+    expect(await listPendingLeaderboardSubmissions(localId)).toHaveLength(0);
+
+    // Offline queueing keeps row in outbox and pendingCount >= 1 until online sync flushes it
+    vi.stubGlobal('navigator', { onLine: false });
+    const offlineOutcome = await lbService.submitResult({
+      puzzleId: 'bank-easy-01',
+      mode: 'standard',
+      difficulty: 'easy',
+      solutionGrid:
+        '723968154549371682186254379432716598615489237978532416257843961391627845864195723',
+      elapsedMs: 55_000,
+      hintsUsed: 1,
+      completedAt: '2026-11-28T10:05:00.000Z',
+    });
+    expect(offlineOutcome).toEqual({ status: 'queued' });
+    expect(await listPendingLeaderboardSubmissions(localId)).toHaveLength(1);
+    expect(manager.getState().pendingCount).toBeGreaterThanOrEqual(1);
+
+    // Next reconnect flushes it cleanly; permanent rejected eviction leaves status idle
+    vi.stubGlobal('navigator', { onLine: true });
+    submitMock.mockResolvedValueOnce({
+      ok: false,
+      kind: 'rejected',
+      code: 'INVALID_SOLUTION',
+      message: 'invalid grid',
+    });
+    await manager.syncNow(localId);
+    expect(await listPendingLeaderboardSubmissions(localId)).toHaveLength(0);
+    expect(manager.getState().status).toBe('idle');
   });
 });

@@ -11,6 +11,7 @@ import {
   type CompletedPuzzleRecord,
   type GameStatsRecord,
   type GameStorageService,
+  type LeaderboardSubmissionPayload,
   type Profile,
   type ProfileAccentId,
   type ProfileSettings,
@@ -23,7 +24,7 @@ import { getSystemThemeMode } from '@hearthside/ui';
 export { getStoragePersistenceStatus, requestStoragePersistence } from '../diagnostics/indexedDb';
 
 export const HEARTHSIDE_DB_NAME = 'hearthside-db';
-export const HEARTHSIDE_DB_VERSION = 4;
+export const HEARTHSIDE_DB_VERSION = 5;
 export const EXPORT_SCHEMA_VERSION = 1;
 export const DEFAULT_PROFILE_ID = 'profile-default-1';
 export const DEFAULT_PROFILE_NAME = 'Player 1';
@@ -40,6 +41,16 @@ const STORE_SERVER_SYNC_META = 'serverSyncMeta';
 const STORE_PUZZLE_RECORDS = 'puzzleRecords';
 const STORE_SYNC_CONFLICTS = 'syncConflicts';
 const STORE_PROFILE_SYNC_STATE = 'profileSyncState';
+const STORE_LEADERBOARD_OUTBOX = 'leaderboardOutbox';
+
+export interface PendingLeaderboardSubmission {
+  readonly localProfileId: string;
+  readonly gameId: string;
+  readonly puzzleId: string;
+  readonly remoteProfileId: string;
+  readonly payload: LeaderboardSubmissionPayload;
+  readonly queuedAt: string;
+}
 
 export interface ProfileSyncStateRecord {
   readonly profileId: string;
@@ -187,6 +198,12 @@ export function openHearthsideDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_PROFILE_SYNC_STATE)) {
         db.createObjectStore(STORE_PROFILE_SYNC_STATE, { keyPath: 'profileId' });
       }
+      if (!db.objectStoreNames.contains(STORE_LEADERBOARD_OUTBOX)) {
+        const outbox = db.createObjectStore(STORE_LEADERBOARD_OUTBOX, {
+          keyPath: ['localProfileId', 'gameId', 'puzzleId'],
+        });
+        outbox.createIndex('by_local_profile', 'localProfileId', { unique: false });
+      }
     };
 
     request.onsuccess = () => {
@@ -268,7 +285,8 @@ function isProfile(value: unknown): value is Profile {
     isNonEmptyString(value.createdAt) &&
     (value.remoteProfileId === undefined || typeof value.remoteProfileId === 'string') &&
     (value.householdId === undefined || typeof value.householdId === 'string') &&
-    (value.isChild === undefined || typeof value.isChild === 'boolean')
+    (value.isChild === undefined || typeof value.isChild === 'boolean') &&
+    (value.friendsVisible === undefined || typeof value.friendsVisible === 'boolean')
   );
 }
 
@@ -600,6 +618,7 @@ export interface CreateProfileInput {
   readonly remoteProfileId?: string;
   readonly householdId?: string;
   readonly isChild?: boolean;
+  readonly friendsVisible?: boolean;
 }
 
 export async function createProfile(input: CreateProfileInput): Promise<Profile> {
@@ -617,6 +636,7 @@ export async function createProfile(input: CreateProfileInput): Promise<Profile>
     ...(input.remoteProfileId ? { remoteProfileId: input.remoteProfileId } : {}),
     ...(input.householdId ? { householdId: input.householdId } : {}),
     ...(input.isChild !== undefined ? { isChild: input.isChild } : {}),
+    ...(input.friendsVisible !== undefined ? { friendsVisible: input.friendsVisible } : {}),
   };
   const settings = input.settings ?? createDefaultProfileSettings(getSystemThemeMode());
 
@@ -637,6 +657,7 @@ export interface RemoteProfileLinkTarget {
   readonly avatarId: string;
   readonly accentColor: string;
   readonly isChild: boolean;
+  readonly friendsVisible?: boolean;
 }
 
 /**
@@ -646,7 +667,7 @@ export interface RemoteProfileLinkTarget {
  */
 export async function linkLocalProfileToHousehold(
   localProfileId: string,
-  remote: Pick<RemoteProfileLinkTarget, 'id' | 'householdId' | 'isChild'>,
+  remote: Pick<RemoteProfileLinkTarget, 'id' | 'householdId' | 'isChild' | 'friendsVisible'>,
 ): Promise<Profile> {
   const nowIso = new Date().toISOString();
   return withDb(async (db) => {
@@ -674,6 +695,9 @@ export async function linkLocalProfileToHousehold(
       remoteProfileId: remote.id,
       householdId: remote.householdId,
       isChild: remote.isChild,
+      ...(remote.friendsVisible !== undefined
+        ? { friendsVisible: remote.friendsVisible }
+        : { friendsVisible: !remote.isChild }),
     };
     profilesStore.put(updated);
 
@@ -778,7 +802,7 @@ export function linkLocalProfileToRemote(
  */
 export async function unlinkLocalProfile(localProfileId: string): Promise<Profile> {
   return withDb(async (db) => {
-    const tx = db.transaction(STORE_PROFILES, 'readwrite');
+    const tx = db.transaction([STORE_PROFILES, STORE_LEADERBOARD_OUTBOX], 'readwrite');
     const store = tx.objectStore(STORE_PROFILES);
     const existing: unknown = await requestToPromise(
       store.get(localProfileId),
@@ -796,6 +820,10 @@ export async function unlinkLocalProfile(localProfileId: string): Promise<Profil
       createdAt: existing.createdAt,
     };
     store.put(updated);
+    await deleteIndexMatches(
+      tx.objectStore(STORE_LEADERBOARD_OUTBOX).index('by_local_profile'),
+      IDBKeyRange.only(localProfileId),
+    );
     await transactionDone(tx, 'Unlink local profile');
     return updated;
   });
@@ -841,6 +869,7 @@ export async function addRemoteProfileToDevice(
     remoteProfileId: remote.id,
     householdId: remote.householdId,
     isChild: remote.isChild,
+    friendsVisible: remote.friendsVisible ?? !remote.isChild,
   });
 
   return { profile, settings, created: true };
@@ -850,6 +879,7 @@ export interface UpdateProfileInput {
   readonly name?: string;
   readonly avatarId?: AvatarId;
   readonly accentColor?: ProfileAccentId;
+  readonly friendsVisible?: boolean;
 }
 
 export async function updateProfile(
@@ -877,6 +907,7 @@ export async function updateProfile(
       name: nextName,
       avatarId: updates.avatarId ?? existing.avatarId,
       accentColor: updates.accentColor ?? existing.accentColor,
+      ...(updates.friendsVisible !== undefined ? { friendsVisible: updates.friendsVisible } : {}),
     };
     store.put(updated);
     await transactionDone(tx, 'Update profile');
@@ -887,7 +918,13 @@ export async function updateProfile(
 export async function deleteProfile(profileId: string): Promise<void> {
   await withDb(async (db) => {
     const tx = db.transaction(
-      [...ALL_STORES, STORE_PUZZLE_RECORDS, STORE_SYNC_CONFLICTS, STORE_PROFILE_SYNC_STATE],
+      [
+        ...ALL_STORES,
+        STORE_PUZZLE_RECORDS,
+        STORE_SYNC_CONFLICTS,
+        STORE_PROFILE_SYNC_STATE,
+        STORE_LEADERBOARD_OUTBOX,
+      ],
       'readwrite',
     );
     const profilesStore = tx.objectStore(STORE_PROFILES);
@@ -913,6 +950,10 @@ export async function deleteProfile(profileId: string): Promise<void> {
     await deleteIndexMatches(tx.objectStore(STORE_COMPLETED).index('by_profile'), range);
     await deleteIndexMatches(tx.objectStore(STORE_PUZZLE_RECORDS).index('by_profile'), range);
     await deleteIndexMatches(tx.objectStore(STORE_SYNC_CONFLICTS).index('by_profile'), range);
+    await deleteIndexMatches(
+      tx.objectStore(STORE_LEADERBOARD_OUTBOX).index('by_local_profile'),
+      range,
+    );
 
     await transactionDone(tx, 'Delete profile');
   });
@@ -1497,6 +1538,56 @@ export async function putProfileSyncState(state: ProfileSyncStateRecord): Promis
     const tx = db.transaction(STORE_PROFILE_SYNC_STATE, 'readwrite');
     tx.objectStore(STORE_PROFILE_SYNC_STATE).put(state);
     await transactionDone(tx, 'Save profile sync state');
+  });
+}
+
+function isPendingLeaderboardSubmission(value: unknown): value is PendingLeaderboardSubmission {
+  if (!isRecord(value) || !isRecord(value.payload)) {
+    return false;
+  }
+  return (
+    isNonEmptyString(value.localProfileId) &&
+    isNonEmptyString(value.gameId) &&
+    isNonEmptyString(value.puzzleId) &&
+    isNonEmptyString(value.remoteProfileId) &&
+    isNonEmptyString(value.queuedAt) &&
+    isNonEmptyString(value.payload.puzzleId) &&
+    isNonEmptyString(value.payload.solutionGrid)
+  );
+}
+
+export async function putPendingLeaderboardSubmission(
+  entry: PendingLeaderboardSubmission,
+): Promise<void> {
+  await withDb(async (db) => {
+    const tx = db.transaction(STORE_LEADERBOARD_OUTBOX, 'readwrite');
+    tx.objectStore(STORE_LEADERBOARD_OUTBOX).put(entry);
+    await transactionDone(tx, 'Queue leaderboard submission');
+  });
+}
+
+export async function listPendingLeaderboardSubmissions(
+  localProfileId: string,
+): Promise<PendingLeaderboardSubmission[]> {
+  return withDb(async (db) => {
+    const tx = db.transaction(STORE_LEADERBOARD_OUTBOX, 'readonly');
+    const raw = (await requestToPromise(
+      tx.objectStore(STORE_LEADERBOARD_OUTBOX).index('by_local_profile').getAll(localProfileId),
+      'Failed to list pending leaderboard submissions.',
+    )) as unknown[];
+    return raw.filter(isPendingLeaderboardSubmission);
+  });
+}
+
+export async function deletePendingLeaderboardSubmission(
+  localProfileId: string,
+  gameId: string,
+  puzzleId: string,
+): Promise<void> {
+  await withDb(async (db) => {
+    const tx = db.transaction(STORE_LEADERBOARD_OUTBOX, 'readwrite');
+    tx.objectStore(STORE_LEADERBOARD_OUTBOX).delete([localProfileId, gameId, puzzleId]);
+    await transactionDone(tx, 'Delete leaderboard submission');
   });
 }
 

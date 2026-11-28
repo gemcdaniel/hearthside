@@ -1,6 +1,29 @@
 export { AUDIO_CUES, isAudioCue, type AudioCue, type AudioService } from './audio';
 export { APP_DISPLAY_NAME, APP_VERSION } from './config';
 export type {
+  DailyLeaderboardResponse,
+  DailyTierStatus,
+  HouseholdDailyProfileSummary,
+  HouseholdDailySummary,
+  LeaderboardDifficulty,
+  LeaderboardEntry,
+  LeaderboardMode,
+  LeaderboardOpenTarget,
+  LeaderboardResponse,
+  LeaderboardScope,
+  LeaderboardService,
+  LeaderboardSubmissionPayload,
+  LeaderboardSubmissionResult,
+  LeaderboardSubmitOutcome,
+  PuzzleLeaderboardResponse,
+} from './leaderboard';
+export {
+  MAX_NICKNAME_LENGTH,
+  PRESET_NICKNAMES,
+  validateNickname,
+  type NicknameValidationResult,
+} from './nickname';
+export type {
   GameCategory,
   GameEvent,
   GameLibraryExtrasProps,

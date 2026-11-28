@@ -420,4 +420,166 @@ describe('AccountHouseholdSection', () => {
     fireEvent.click(within(card).getByRole('button', { name: 'Resolve Conflict' }));
     expect(onOpenConflicts).toHaveBeenCalledTimes(1);
   });
+
+  it('supports Fun Nicknames picker, rejects URL nicknames inline, and toggles friendsVisible per profile', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url === '/api/v1/invites') {
+        return new Response(JSON.stringify({ invites: [] }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url === '/api/v1/household/profiles' && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body ?? '{}')) as { name?: string };
+        return new Response(
+          JSON.stringify({
+            profile: {
+              id: 'remote-child-2',
+              householdId: 'hh-1',
+              userId: '',
+              name: body.name ?? 'Cozy Fox',
+              avatarId: 'owl',
+              accentColor: 'emerald',
+              isChild: true,
+              friendsVisible: false,
+              createdAt: '2026-11-28T00:00:00.000Z',
+              updatedAt: '2026-11-28T00:00:00.000Z',
+            },
+          }),
+          { status: 201, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (url === '/api/v1/household/profiles/remote-child-1' && init?.method === 'PATCH') {
+        const body = JSON.parse(String(init.body ?? '{}')) as { friendsVisible?: boolean };
+        return new Response(
+          JSON.stringify({
+            profile: {
+              id: 'remote-child-1',
+              householdId: 'hh-1',
+              userId: '',
+              name: 'Sunny Otter',
+              avatarId: 'owl',
+              accentColor: 'emerald',
+              isChild: true,
+              friendsVisible: Boolean(body.friendsVisible),
+              createdAt: '2026-11-28T00:00:00.000Z',
+              updatedAt: '2026-11-28T00:01:00.000Z',
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const signedInSession: AuthSessionPayload = {
+      user: {
+        id: 'u-1',
+        householdId: 'hh-1',
+        email: 'alex@example.com',
+        displayName: 'Alex',
+        role: 'owner',
+        createdAt: '2026-11-27T00:00:00.000Z',
+      },
+      household: { id: 'hh-1', name: 'Oakwood', createdAt: '2026-11-27T00:00:00.000Z' },
+      profiles: [
+        {
+          id: 'remote-p1',
+          householdId: 'hh-1',
+          userId: 'u-1',
+          name: 'Alex',
+          avatarId: 'hearth',
+          accentColor: 'cobalt',
+          isChild: false,
+          friendsVisible: true,
+          createdAt: '2026-11-27T00:00:00.000Z',
+          updatedAt: '2026-11-27T00:00:00.000Z',
+        },
+        {
+          id: 'remote-child-1',
+          householdId: 'hh-1',
+          userId: '',
+          name: 'Sunny Otter',
+          avatarId: 'owl',
+          accentColor: 'emerald',
+          isChild: true,
+          friendsVisible: false,
+          createdAt: '2026-11-27T00:00:00.000Z',
+          updatedAt: '2026-11-27T00:00:00.000Z',
+        },
+      ],
+    };
+
+    const providers: AuthProvidersInfo = {
+      bootstrapRequired: false,
+      emailEnabled: true,
+      oidcEnabled: false,
+      oidcProviderName: '',
+    };
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <AccountHouseholdSection
+        session={signedInSession}
+        providers={providers}
+        backendState="ready"
+        cachedBankCount={3}
+        localProfiles={[LOCAL_PROFILE]}
+        onRefreshStatus={onRefresh}
+        onSessionChanged={vi.fn().mockResolvedValue(undefined)}
+        onLinkLocalProfile={vi.fn()}
+        onUnlinkLocalProfile={vi.fn()}
+        onAddRemoteProfileToDevice={vi.fn()}
+        onSyncNow={vi.fn()}
+        onClearPendingInvite={vi.fn()}
+      />,
+    );
+
+    // Child profile defaults friendsVisible OFF and calls PATCH when toggled ON
+    const childCheckbox = screen.getByLabelText('Show Sunny Otter on Friends leaderboards');
+    expect(childCheckbox).not.toBeChecked();
+    fireEvent.click(childCheckbox);
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/v1/household/profiles/remote-child-1',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ friendsVisible: true }),
+        }),
+      );
+    });
+
+    // Invalid URL nickname is rejected inline without hitting POST
+    const childForm = screen.getByRole('form', { name: 'Add Child Profile' });
+    fireEvent.change(
+      within(childForm).getByLabelText('Add child profile (no email or password needed)'),
+      { target: { value: 'https://bad.com' } },
+    );
+    fireEvent.click(within(childForm).getByRole('button', { name: 'Add Child Profile' }));
+    expect(screen.getByText(/Nicknames cannot contain website links or URLs/i)).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      '/api/v1/household/profiles',
+      expect.objectContaining({ method: 'POST' }),
+    );
+
+    // Expand Fun Nicknames picker, verify Surprise Me + chip selection, and submit cleanly
+    fireEvent.click(within(childForm).getByRole('button', { name: 'Surprise Me' }));
+    const childInput = within(childForm).getByLabelText(
+      'Add child profile (no email or password needed)',
+    ) as HTMLInputElement;
+    expect(childInput.value.length).toBeGreaterThan(0);
+
+    fireEvent.click(within(childForm).getByRole('button', { name: 'Fun Nicknames' }));
+    fireEvent.click(within(childForm).getByRole('button', { name: 'Cozy Fox' }));
+    expect(childInput).toHaveValue('Cozy Fox');
+    fireEvent.click(within(childForm).getByRole('button', { name: 'Add Child Profile' }));
+    await waitFor(() => {
+      expect(screen.getByText('Added child profile "Cozy Fox".')).toBeInTheDocument();
+    });
+  });
 });

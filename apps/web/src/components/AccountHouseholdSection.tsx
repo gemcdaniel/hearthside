@@ -1,8 +1,10 @@
 import {
   AVATAR_IDS,
+  MAX_NICKNAME_LENGTH,
   PROFILE_ACCENT_IDS,
   isAvatarId,
   isProfileAccentId,
+  validateNickname,
   type AvatarId,
   type Profile,
   type ProfileAccentId,
@@ -30,6 +32,7 @@ import type {
   RemoteHouseholdProfile,
   RemoteInvite,
 } from '../api/types';
+import { NicknamePicker } from './NicknamePicker';
 import { ProfileAvatar } from './ProfileAvatar';
 
 export type AccountBackendState = 'loading' | 'ready' | 'offline' | 'unavailable';
@@ -155,6 +158,7 @@ export function AccountHouseholdSection({
   const [childName, setChildName] = useState('');
   const [childAvatar, setChildAvatar] = useState<AvatarId>('fox');
   const [childAccent, setChildAccent] = useState<ProfileAccentId>('amber');
+  const [childFriendsVisible, setChildFriendsVisible] = useState(false);
   const [editingChildId, setEditingChildId] = useState<string | null>(null);
   const [editingChildName, setEditingChildName] = useState('');
   const [confirmDeleteChildId, setConfirmDeleteChildId] = useState<string | null>(null);
@@ -206,12 +210,17 @@ export function AccountHouseholdSection({
 
   async function handleBootstrapSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const displayCheck = validateNickname(bootDisplay);
+    if (!displayCheck.ok) {
+      setAuthStatus(displayCheck.reason);
+      return;
+    }
     setAuthBusy(true);
     setAuthStatus(null);
     try {
       const res = await bootstrapHousehold({
         householdName: bootHousehold.trim(),
-        displayName: bootDisplay.trim(),
+        displayName: displayCheck.normalized,
         email: bootEmail.trim(),
         password: bootPassword,
         ...(bootToken.trim() ? { bootstrapToken: bootToken.trim() } : {}),
@@ -253,13 +262,18 @@ export function AccountHouseholdSection({
 
   async function handleRegisterSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const displayCheck = validateNickname(regDisplay);
+    if (!displayCheck.ok) {
+      setAuthStatus(displayCheck.reason);
+      return;
+    }
     setAuthBusy(true);
     setAuthStatus(null);
     try {
       const res = await registerWithInvite({
         inviteToken: regInvite.trim(),
         ...(regHousehold.trim() ? { householdName: regHousehold.trim() } : {}),
-        displayName: regDisplay.trim(),
+        displayName: displayCheck.normalized,
         email: regEmail.trim(),
         password: regPassword,
       });
@@ -292,21 +306,29 @@ export function AccountHouseholdSection({
 
   async function handleCreateChildSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const trimmed = childName.trim();
-    if (!trimmed) {
-      setHouseholdStatus('Enter a child profile name.');
+    const nameCheck = validateNickname(childName);
+    if (!nameCheck.ok) {
+      setHouseholdStatus(nameCheck.reason);
       return;
     }
     setHouseholdStatus(null);
     const res = await createChildProfile({
-      name: trimmed,
+      name: nameCheck.normalized,
       avatarId: childAvatar,
       accentColor: childAccent,
     });
     if (res.status === 'ok') {
+      let createdName = res.data.name;
+      if (childFriendsVisible) {
+        const patchRes = await updateHouseholdProfile(res.data.id, { friendsVisible: true });
+        if (patchRes.status === 'ok') {
+          createdName = patchRes.data.name;
+        }
+      }
       setChildName('');
+      setChildFriendsVisible(false);
       await refreshSessionAndInvites();
-      setHouseholdStatus(`Added child profile "${res.data.name}".`);
+      setHouseholdStatus(`Added child profile "${createdName}".`);
     } else if (res.status === 'error') {
       setHouseholdStatus(res.message);
     } else {
@@ -314,13 +336,28 @@ export function AccountHouseholdSection({
     }
   }
 
+  async function handleToggleFriendsVisible(remote: RemoteHouseholdProfile, nextVisible: boolean) {
+    setHouseholdStatus(null);
+    const res = await updateHouseholdProfile(remote.id, { friendsVisible: nextVisible });
+    if (res.status === 'ok') {
+      await refreshSessionAndInvites();
+      setHouseholdStatus(
+        `${res.data.name} is now ${nextVisible ? 'shown on' : 'hidden from'} Friends leaderboards.`,
+      );
+    } else if (res.status === 'error') {
+      setHouseholdStatus(res.message);
+    } else {
+      setHouseholdStatus('Unable to update Friends visibility while offline.');
+    }
+  }
+
   async function handleSaveChildRename(profileId: string) {
-    const trimmed = editingChildName.trim();
-    if (!trimmed) {
-      setHouseholdStatus('Child profile name cannot be empty.');
+    const nameCheck = validateNickname(editingChildName);
+    if (!nameCheck.ok) {
+      setHouseholdStatus(nameCheck.reason);
       return;
     }
-    const res = await updateHouseholdProfile(profileId, { name: trimmed });
+    const res = await updateHouseholdProfile(profileId, { name: nameCheck.normalized });
     if (res.status === 'ok') {
       setEditingChildId(null);
       setEditingChildName('');
@@ -493,6 +530,8 @@ export function AccountHouseholdSection({
                   : 'cobalt';
                 const isEditing = editingChildId === remote.id;
                 const isConfirmingDelete = confirmDeleteChildId === remote.id;
+                const canToggleFriends = remote.isChild || remote.userId === session.user.id;
+                const isFriendsVisible = remote.friendsVisible ?? !remote.isChild;
 
                 return (
                   <div key={remote.id} className="hs-profile-row">
@@ -504,7 +543,7 @@ export function AccountHouseholdSection({
                           className="hs-input"
                           aria-label={`Edit child name for ${remote.name}`}
                           value={editingChildName}
-                          maxLength={40}
+                          maxLength={MAX_NICKNAME_LENGTH}
                           onChange={(e) => setEditingChildName(e.target.value)}
                         />
                       ) : (
@@ -516,6 +555,19 @@ export function AccountHouseholdSection({
                       <span className="hs-badge" data-tone={linkedLocal ? 'success' : 'warning'}>
                         {linkedLocal ? `On device (${linkedLocal.name})` : 'Not on device'}
                       </span>
+                      {canToggleFriends ? (
+                        <label className="hs-checkbox-label hs-friends-toggle">
+                          <input
+                            type="checkbox"
+                            checked={isFriendsVisible}
+                            aria-label={`Show ${remote.name} on Friends leaderboards`}
+                            onChange={(e) =>
+                              void handleToggleFriendsVisible(remote, e.target.checked)
+                            }
+                          />
+                          <span>Show on Friends leaderboards</span>
+                        </label>
+                      ) : null}
                     </div>
 
                     <div className="hs-btn-group">
@@ -653,8 +705,8 @@ export function AccountHouseholdSection({
                     id="hs-child-name"
                     type="text"
                     className="hs-input"
-                    placeholder="e.g. Leo"
-                    maxLength={40}
+                    placeholder="e.g. Sunny Otter"
+                    maxLength={MAX_NICKNAME_LENGTH}
                     value={childName}
                     onChange={(e) => setChildName(e.target.value)}
                   />
@@ -662,6 +714,29 @@ export function AccountHouseholdSection({
                     Add Child Profile
                   </button>
                 </div>
+                <NicknamePicker
+                  label="Fun Nicknames"
+                  currentValue={childName}
+                  onSelectNickname={(name) => {
+                    setChildName(name);
+                    setHouseholdStatus(null);
+                  }}
+                />
+              </div>
+
+              <div className="hs-form-row">
+                <label className="hs-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={childFriendsVisible}
+                    onChange={(e) => setChildFriendsVisible(e.target.checked)}
+                  />
+                  <span>Show on Friends leaderboards</span>
+                </label>
+                <p className="hs-account-meta">
+                  Off by default for kids. Lets invited friend households see this profile on
+                  Friends boards.
+                </p>
               </div>
 
               <div className="hs-picker-row">

@@ -1,6 +1,8 @@
 import {
   AVATAR_IDS,
+  MAX_NICKNAME_LENGTH,
   PROFILE_ACCENT_IDS,
+  validateNickname,
   type AudioService,
   type AvatarId,
   type Profile,
@@ -30,6 +32,7 @@ import {
   requestStoragePersistence,
 } from '../storage/hearthsideDb';
 import { AccountHouseholdSection, type AccountBackendState } from './AccountHouseholdSection';
+import { NicknamePicker } from './NicknamePicker';
 import { ProfileAvatar } from './ProfileAvatar';
 
 const LazyDiagnosticsPanel = lazy(() =>
@@ -169,35 +172,35 @@ export function SettingsModal({
 
   async function handleCreateSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const trimmed = newName.trim();
-    if (!trimmed) {
-      setProfileStatus('Enter a display name before creating a profile.');
+    const check = validateNickname(newName);
+    if (!check.ok) {
+      setProfileStatus(check.reason);
       return;
     }
     try {
       await onCreateProfile({
-        name: trimmed,
+        name: check.normalized,
         avatarId: newAvatar,
         accentColor: newAccent,
       });
       setNewName('');
-      setProfileStatus(`Created and switched to profile "${trimmed}".`);
+      setProfileStatus(`Created and switched to profile "${check.normalized}".`);
     } catch (err) {
       setProfileStatus(err instanceof Error ? err.message : 'Unable to create profile.');
     }
   }
 
   async function handleRenameSave(profileId: string) {
-    const trimmed = editingName.trim();
-    if (!trimmed) {
-      setProfileStatus('Profile name cannot be empty.');
+    const check = validateNickname(editingName);
+    if (!check.ok) {
+      setProfileStatus(check.reason);
       return;
     }
     try {
-      await onRenameProfile(profileId, trimmed);
+      await onRenameProfile(profileId, check.normalized);
       setEditingProfileId(null);
       setEditingName('');
-      setProfileStatus(`Renamed profile to "${trimmed}".`);
+      setProfileStatus(`Renamed profile to "${check.normalized}".`);
     } catch (err) {
       setProfileStatus(err instanceof Error ? err.message : 'Unable to rename profile.');
     }
@@ -335,7 +338,7 @@ export function SettingsModal({
                           className="hs-input"
                           aria-label={`Edit name for ${profile.name}`}
                           value={editingName}
-                          maxLength={32}
+                          maxLength={MAX_NICKNAME_LENGTH}
                           onChange={(event) => setEditingName(event.target.value)}
                         />
                       ) : (
@@ -417,8 +420,8 @@ export function SettingsModal({
                     id="hs-new-profile-name"
                     type="text"
                     className="hs-input"
-                    placeholder="e.g. Alex"
-                    maxLength={32}
+                    placeholder="e.g. Cozy Fox"
+                    maxLength={MAX_NICKNAME_LENGTH}
                     value={newName}
                     onChange={(event) => setNewName(event.target.value)}
                   />
@@ -426,6 +429,14 @@ export function SettingsModal({
                     Add Profile
                   </button>
                 </div>
+                <NicknamePicker
+                  label="Fun Nicknames"
+                  currentValue={newName}
+                  onSelectNickname={(name) => {
+                    setNewName(name);
+                    setProfileStatus(null);
+                  }}
+                />
               </div>
 
               <div className="hs-picker-row">

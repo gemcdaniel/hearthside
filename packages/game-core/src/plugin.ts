@@ -1,4 +1,5 @@
 import type { AudioService } from './audio';
+import type { LeaderboardService } from './leaderboard';
 import type { Profile, ProfileSettings } from './profile';
 import type { GameStorageService, PuzzleSyncService, SaveSlotSummary } from './storage';
 import type { CloudSyncService, PuzzleRecordLogEntry, SaveSummaryMetadata } from './sync';
@@ -62,6 +63,7 @@ export interface ShellServices {
   readonly audio: AudioService;
   readonly puzzleSync?: PuzzleSyncService;
   readonly sync?: CloudSyncService;
+  readonly leaderboards?: LeaderboardService;
   readonly onExitToLibrary: () => void;
 }
 

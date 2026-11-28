@@ -4,6 +4,10 @@ import type { SudokuDifficulty, SudokuMode } from '../engine/types';
 import { TrophyIcon } from './SudokuIcons';
 import { formatElapsedTime } from './formatTime';
 
+export type VictoryLeaderboardState =
+  | { readonly kind: 'submitted'; readonly rank: number; readonly total: number }
+  | { readonly kind: 'queued' };
+
 export interface SudokuVictoryModalProps {
   readonly open: boolean;
   readonly mode: SudokuMode;
@@ -12,6 +16,8 @@ export interface SudokuVictoryModalProps {
   readonly elapsedMs: number;
   readonly hintsUsed: number;
   readonly isNewPersonalBest: boolean;
+  readonly leaderboardState?: VictoryLeaderboardState;
+  readonly onViewLeaderboard?: () => void;
   readonly onPlayAgain: () => void;
   readonly onViewStats: () => void;
   readonly onExitToLibrary: () => void;
@@ -37,6 +43,8 @@ export function SudokuVictoryModal({
   elapsedMs,
   hintsUsed,
   isNewPersonalBest,
+  leaderboardState,
+  onViewLeaderboard,
   onPlayAgain,
   onViewStats,
   onExitToLibrary,
@@ -100,6 +108,31 @@ export function SudokuVictoryModal({
               <span className="hs-sudoku-stat-label">Hints Used</span>
             </div>
           </div>
+
+          {leaderboardState ? (
+            <div className="hs-sudoku-victory-rank" role="status">
+              {leaderboardState.kind === 'submitted' ? (
+                <>
+                  <span className="hs-badge" data-tone="success">
+                    #{leaderboardState.rank} of {leaderboardState.total} in Household
+                  </span>
+                  {onViewLeaderboard ? (
+                    <button
+                      type="button"
+                      className="hs-btn hs-btn-secondary"
+                      onClick={onViewLeaderboard}
+                    >
+                      View Leaderboard
+                    </button>
+                  ) : null}
+                </>
+              ) : (
+                <p className="hs-sudoku-victory-queued">
+                  Saved — will post to leaderboard when online
+                </p>
+              )}
+            </div>
+          ) : null}
 
           <div className="hs-btn-group hs-sudoku-victory-actions">
             <button type="button" className="hs-btn hs-btn-primary" onClick={onPlayAgain}>

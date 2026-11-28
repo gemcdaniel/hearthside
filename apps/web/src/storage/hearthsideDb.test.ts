@@ -8,6 +8,7 @@ import {
   countServerBankPuzzles,
   createGameStorageService,
   createProfile,
+  deletePendingLeaderboardSubmission,
   deleteProfile,
   deleteSave,
   ensureInitialized,
@@ -21,10 +22,12 @@ import {
   linkLocalProfileToHousehold,
   linkLocalProfileToRemote,
   listDirtyPuzzleRecords,
+  listPendingLeaderboardSubmissions,
   listProfiles,
   listPuzzleRecords,
   listServerBankPuzzles,
   listSyncConflicts,
+  putPendingLeaderboardSubmission,
   putServerBankPuzzles,
   putSyncConflict,
   resetHearthsideDbForTests,
@@ -497,5 +500,91 @@ describe('hearthsideDb storage layer', () => {
       detectedAt: '2026-11-27T10:01:00Z',
     });
     expect(await listSyncConflicts('p-v3')).toHaveLength(1);
+  });
+
+  it('stores, lists, deletes, and cleans up leaderboardOutbox entries across unlink and profile delete', async () => {
+    await ensureInitialized();
+    const p1 = await createProfile({ name: 'Cozy Fox', avatarId: 'owl', accentColor: 'cobalt' });
+    const p2 = await createProfile({
+      name: 'Sunny Otter',
+      avatarId: 'hearth',
+      accentColor: 'amber',
+    });
+    await linkLocalProfileToHousehold(p1.id, {
+      id: 'remote-p1',
+      householdId: 'hh-1',
+      isChild: false,
+      friendsVisible: true,
+    });
+    expect((await getProfile(p1.id))?.friendsVisible).toBe(true);
+
+    await putPendingLeaderboardSubmission({
+      localProfileId: p1.id,
+      remoteProfileId: 'remote-p1',
+      gameId: 'sudoku',
+      puzzleId: 'daily-2026-11-28-easy',
+      payload: {
+        profileId: 'remote-p1',
+        gameId: 'sudoku',
+        puzzleId: 'daily-2026-11-28-easy',
+        mode: 'daily',
+        dailyDate: '2026-11-28',
+        difficulty: 'easy',
+        solutionGrid: '7'.repeat(81),
+        elapsedMs: 32_000,
+        hintsUsed: 0,
+        completedAt: '2026-11-28T10:00:00.000Z',
+      },
+      queuedAt: '2026-11-28T10:00:00.000Z',
+    });
+    await putPendingLeaderboardSubmission({
+      localProfileId: p2.id,
+      remoteProfileId: 'remote-p2',
+      gameId: 'sudoku',
+      puzzleId: 'bank-easy-01',
+      payload: {
+        profileId: 'remote-p2',
+        gameId: 'sudoku',
+        puzzleId: 'bank-easy-01',
+        mode: 'standard',
+        difficulty: 'easy',
+        solutionGrid: '5'.repeat(81),
+        elapsedMs: 41_000,
+        hintsUsed: 1,
+        completedAt: '2026-11-28T10:05:00.000Z',
+      },
+      queuedAt: '2026-11-28T10:05:00.000Z',
+    });
+
+    expect(await listPendingLeaderboardSubmissions(p1.id)).toHaveLength(1);
+    expect(await listPendingLeaderboardSubmissions(p2.id)).toHaveLength(1);
+
+    await unlinkLocalProfile(p1.id);
+    expect(await listPendingLeaderboardSubmissions(p1.id)).toHaveLength(0);
+    expect(await listPendingLeaderboardSubmissions(p2.id)).toHaveLength(1);
+
+    await deleteProfile(p2.id);
+    expect(await listPendingLeaderboardSubmissions(p2.id)).toHaveLength(0);
+
+    await putPendingLeaderboardSubmission({
+      localProfileId: p1.id,
+      remoteProfileId: 'remote-p1',
+      gameId: 'sudoku',
+      puzzleId: 'manual-delete',
+      payload: {
+        profileId: 'remote-p1',
+        gameId: 'sudoku',
+        puzzleId: 'manual-delete',
+        mode: 'standard',
+        difficulty: 'medium',
+        solutionGrid: '1'.repeat(81),
+        elapsedMs: 50_000,
+        hintsUsed: 0,
+        completedAt: '2026-11-28T10:10:00.000Z',
+      },
+      queuedAt: '2026-11-28T10:10:00.000Z',
+    });
+    await deletePendingLeaderboardSubmission(p1.id, 'sudoku', 'manual-delete');
+    expect(await listPendingLeaderboardSubmissions(p1.id)).toHaveLength(0);
   });
 });

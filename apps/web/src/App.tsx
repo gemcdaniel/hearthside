@@ -1,6 +1,7 @@
 import {
   createDefaultProfileSettings,
   type AvatarId,
+  type LeaderboardOpenTarget,
   type Profile,
   type ProfileAccentId,
   type ProfileSettings,
@@ -15,6 +16,7 @@ import type { AuthProvidersInfo, AuthSessionPayload, RemoteHouseholdProfile } fr
 import { attachAudioUnlockListeners, audioService } from './audio/audioService';
 import type { AccountBackendState } from './components/AccountHouseholdSection';
 import { GameHost } from './components/GameHost';
+import { LeaderboardModal } from './components/LeaderboardModal';
 import { LibraryView, type SavedSlotsByGame } from './components/LibraryView';
 import { PwaUpdateBanner } from './components/PwaUpdateBanner';
 import { ShellHeader } from './components/ShellHeader';
@@ -82,6 +84,17 @@ export function App() {
   const [activeLaunch, setActiveLaunch] = useState<ActiveGameLaunch | null>(null);
   const [savedSlotsByGame, setSavedSlotsByGame] = useState<SavedSlotsByGame>({});
   const [libraryRefreshVersion, setLibraryRefreshVersion] = useState(0);
+  const [leaderboardModalOpen, setLeaderboardModalOpen] = useState(false);
+  const [todayDateYYYYMMDD] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  });
+  const [leaderboardTarget, setLeaderboardTarget] = useState<LeaderboardOpenTarget>(() => ({
+    kind: 'daily',
+    date: todayDateYYYYMMDD,
+    difficulty: 'easy',
+  }));
+  const [leaderboardRefreshVersion, setLeaderboardRefreshVersion] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pendingInviteToken, setPendingInviteToken] = useState<string | null>(null);
   const [session, setSession] = useState<AuthSessionPayload | null>(null);
@@ -175,6 +188,9 @@ export function App() {
         if (activeProfileIdRef.current === profileId) {
           setLibraryRefreshVersion((v) => v + 1);
         }
+      },
+      onLeaderboardSubmitted: () => {
+        setLeaderboardRefreshVersion((v) => v + 1);
       },
       onUnauthorized: () => {
         setSession(null);
@@ -427,6 +443,7 @@ export function App() {
       id: remote.id,
       householdId: remote.householdId,
       isChild: remote.isChild,
+      friendsVisible: remote.friendsVisible,
     });
     setProfiles((prev) => prev.map((p) => (p.id === localProfileId ? updated : p)));
     if (activeProfile.id === localProfileId) {
@@ -455,6 +472,7 @@ export function App() {
         avatarId: remote.avatarId,
         accentColor: remote.accentColor,
         isChild: remote.isChild,
+        friendsVisible: remote.friendsVisible,
       },
       settings.mode,
     );
@@ -478,6 +496,21 @@ export function App() {
         ? syncManager.createGameCloudSyncService(activeProfile.id, activeLaunch.gameId)
         : undefined,
     [syncManager, activeProfile.id, activeLaunch],
+  );
+
+  const activeGameLeaderboardService = useMemo(
+    () =>
+      activeLaunch && activeProfile.remoteProfileId
+        ? syncManager.createGameLeaderboardService(
+            activeProfile.id,
+            activeLaunch.gameId,
+            (target) => {
+              setLeaderboardTarget(target);
+              setLeaderboardModalOpen(true);
+            },
+          )
+        : undefined,
+    [syncManager, activeProfile.id, activeProfile.remoteProfileId, activeLaunch],
   );
 
   function handleLaunchGame(gameId: string, modeId?: string) {
@@ -595,6 +628,7 @@ export function App() {
             isSignedIn={session !== null}
             reloadKey={gameReloadNonce}
             syncService={activeGameSyncService}
+            leaderboardService={activeGameLeaderboardService}
             onExitToLibrary={handleExitToLibrary}
           />
         ) : (
@@ -603,6 +637,13 @@ export function App() {
             activeProfile={activeProfile}
             savedSlotsByGame={savedSlotsByGame}
             refreshVersion={libraryRefreshVersion}
+            signedIn={session !== null}
+            todayDateYYYYMMDD={todayDateYYYYMMDD}
+            leaderboardRefreshVersion={leaderboardRefreshVersion}
+            onOpenLeaderboard={(target) => {
+              setLeaderboardTarget(target);
+              setLeaderboardModalOpen(true);
+            }}
             onLaunchGame={handleLaunchGame}
           />
         )}
@@ -646,6 +687,16 @@ export function App() {
           />
         </Suspense>
       ) : null}
+
+      <LeaderboardModal
+        open={leaderboardModalOpen}
+        signedIn={session !== null}
+        activeRemoteProfileId={activeProfile.remoteProfileId}
+        initialTarget={leaderboardTarget}
+        todayDateYYYYMMDD={todayDateYYYYMMDD}
+        refreshVersion={leaderboardRefreshVersion}
+        onClose={() => setLeaderboardModalOpen(false)}
+      />
 
       <SyncConflictModal
         open={conflictModalOpen}

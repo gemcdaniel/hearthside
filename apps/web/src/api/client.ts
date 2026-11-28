@@ -1,5 +1,12 @@
 import type {
   CloudSaveRecord,
+  DailyLeaderboardResponse,
+  HouseholdDailySummary,
+  LeaderboardDifficulty,
+  LeaderboardScope,
+  LeaderboardSubmissionPayload,
+  LeaderboardSubmissionResult,
+  PuzzleLeaderboardResponse,
   PuzzleRecordLogEntry,
   SyncedProfilePreferences,
 } from '@hearthside/game-core';
@@ -21,6 +28,7 @@ import type {
   RemoteInvite,
   RemotePuzzleRecord,
   SavePushResolution,
+  SubmitLeaderboardResultOutcome,
   SyncApiClient,
   ApiResult,
 } from './types';
@@ -373,6 +381,7 @@ export async function updateHouseholdProfile(
     readonly name?: string;
     readonly avatarId?: string;
     readonly accentColor?: string;
+    readonly friendsVisible?: boolean;
   },
 ): Promise<ApiResult<RemoteHouseholdProfile>> {
   const res = await requestJson<{ readonly profile: RemoteHouseholdProfile }>(
@@ -553,9 +562,98 @@ export function pushPreferences(
   });
 }
 
+export async function submitLeaderboardResult(
+  payload: LeaderboardSubmissionPayload,
+  options?: { readonly keepalive?: boolean },
+): Promise<SubmitLeaderboardResultOutcome> {
+  const outcome = await performJsonFetch('/api/v1/leaderboards/submissions', {
+    method: 'POST',
+    body: payload,
+    keepalive: options?.keepalive,
+  });
+
+  switch (outcome.kind) {
+    case 'ok':
+      return { ok: true, result: outcome.payload as LeaderboardSubmissionResult };
+    case 'http_error': {
+      const apiErr = extractApiError(outcome.payload);
+      if (outcome.httpStatus === 400 || outcome.httpStatus === 404 || outcome.httpStatus === 422) {
+        return {
+          ok: false,
+          kind: 'rejected',
+          code: apiErr?.code ?? 'rejected',
+          message: apiErr?.message ?? `Submission rejected (${outcome.httpStatus}).`,
+        };
+      }
+      return {
+        ok: false,
+        kind: 'error',
+        message: apiErr?.message ?? `Leaderboard submission failed (${outcome.httpStatus}).`,
+      };
+    }
+    case 'unauthorized':
+      return { ok: false, kind: 'unauthorized' };
+    case 'offline':
+    case 'unavailable':
+      return { ok: false, kind: 'offline' };
+  }
+}
+
+export function getDailyLeaderboard(options: {
+  readonly date?: string;
+  readonly difficulty: LeaderboardDifficulty;
+  readonly scope?: LeaderboardScope;
+  readonly noHintsOnly?: boolean;
+}): Promise<ApiResult<DailyLeaderboardResponse>> {
+  const params = new URLSearchParams({ difficulty: options.difficulty });
+  if (options.date) {
+    params.set('date', options.date);
+  }
+  if (options.scope) {
+    params.set('scope', options.scope);
+  }
+  if (options.noHintsOnly !== undefined) {
+    params.set('noHintsOnly', options.noHintsOnly ? 'true' : 'false');
+  }
+  return requestJson<DailyLeaderboardResponse>(`/api/v1/leaderboards/daily?${params.toString()}`);
+}
+
+export function getPuzzleLeaderboard(
+  puzzleId: string,
+  options?: {
+    readonly scope?: LeaderboardScope;
+    readonly noHintsOnly?: boolean;
+  },
+): Promise<ApiResult<PuzzleLeaderboardResponse>> {
+  const params = new URLSearchParams();
+  if (options?.scope) {
+    params.set('scope', options.scope);
+  }
+  if (options?.noHintsOnly !== undefined) {
+    params.set('noHintsOnly', options.noHintsOnly ? 'true' : 'false');
+  }
+  const qs = params.toString();
+  const basePath = `/api/v1/leaderboards/puzzles/${encodeURIComponent(puzzleId)}`;
+  return requestJson<PuzzleLeaderboardResponse>(qs ? `${basePath}?${qs}` : basePath);
+}
+
+export function getHouseholdDailySummary(date?: string): Promise<ApiResult<HouseholdDailySummary>> {
+  const params = new URLSearchParams();
+  if (date) {
+    params.set('date', date);
+  }
+  const qs = params.toString();
+  return requestJson<HouseholdDailySummary>(
+    qs
+      ? `/api/v1/leaderboards/household/daily-summary?${qs}`
+      : '/api/v1/leaderboards/household/daily-summary',
+  );
+}
+
 export const defaultSyncApiClient: SyncApiClient = {
   pullProfileSync,
   pushSaveSlot,
   pushRecordsBatch,
   pushPreferences,
+  submitLeaderboardResult,
 };

@@ -3,6 +3,10 @@ import {
   mergePreferencesLWW,
   type CloudSaveRecord,
   type CloudSyncService,
+  type LeaderboardOpenTarget,
+  type LeaderboardService,
+  type LeaderboardSubmissionPayload,
+  type LeaderboardSubmitOutcome,
   type Profile,
   type ProfileSettings,
   type PuzzleRecordLogEntry,
@@ -15,6 +19,7 @@ import { defaultSyncApiClient, isNavigatorOnline } from '../api/client';
 import type { PushRecordsBatchItem, SyncApiClient } from '../api/types';
 import { shellGameRegistry } from '../games/shellRegistry';
 import {
+  deletePendingLeaderboardSubmission,
   deleteSyncConflict,
   getProfile,
   getProfileSettings,
@@ -23,9 +28,11 @@ import {
   getStats,
   listAllSavesForProfile,
   listDirtyPuzzleRecords,
+  listPendingLeaderboardSubmissions,
   listPuzzleRecords,
   listSyncConflicts,
   markPuzzleRecordsSynced,
+  putPendingLeaderboardSubmission,
   putProfileSyncState,
   putStats,
   putSyncConflict,
@@ -56,6 +63,7 @@ export interface SyncManagerOptions {
     slots?: readonly string[],
   ) => void;
   readonly onRemoteRecordsApplied?: (profileId: string, gameId: string) => void;
+  readonly onLeaderboardSubmitted?: (profileId: string) => void;
   readonly onUnauthorized?: () => void;
   readonly now?: () => Date;
 }
@@ -128,6 +136,7 @@ export class SyncManager {
     slots?: readonly string[],
   ) => void;
   private readonly onRemoteRecordsApplied?: (profileId: string, gameId: string) => void;
+  private readonly onLeaderboardSubmitted?: (profileId: string) => void;
   private readonly onUnauthorized?: () => void;
   private readonly now: () => Date;
 
@@ -185,6 +194,7 @@ export class SyncManager {
     this.onRemoteSettingsApplied = options.onRemoteSettingsApplied;
     this.onRemoteSavesApplied = options.onRemoteSavesApplied;
     this.onRemoteRecordsApplied = options.onRemoteRecordsApplied;
+    this.onLeaderboardSubmitted = options.onLeaderboardSubmitted;
     this.onUnauthorized = options.onUnauthorized;
     this.now = options.now ?? (() => new Date());
   }
@@ -338,14 +348,15 @@ export class SyncManager {
   }
 
   private async computePendingCount(profileId: string): Promise<number> {
-    const [dirtyRecords, allSaves, syncState] = await Promise.all([
+    const [dirtyRecords, allSaves, syncState, pendingLeaderboards] = await Promise.all([
       listDirtyPuzzleRecords(profileId),
       listAllSavesForProfile(profileId),
       getProfileSyncState(profileId),
+      listPendingLeaderboardSubmissions(profileId),
     ]);
     const dirtySaves = allSaves.filter((s) => s.dirty).length;
     const prefCount = syncState?.preferencesDirty ? 1 : 0;
-    return dirtyRecords.length + dirtySaves + prefCount;
+    return dirtyRecords.length + dirtySaves + prefCount + pendingLeaderboards.length;
   }
 
   async syncNow(profileId: string, options?: { readonly keepalive?: boolean }): Promise<void> {
@@ -444,6 +455,16 @@ export class SyncManager {
     const pullOutcome = await this.pullRemoteSnapshotPass(profile.id, remoteProfileId);
     if (pullOutcome !== 'ok') {
       await this.handlePassFailure(profile.id, pullOutcome);
+      return;
+    }
+
+    const leaderboardOutcome = await this.flushLeaderboardOutboxPass(
+      profile.id,
+      remoteProfileId,
+      opts,
+    );
+    if (leaderboardOutcome !== 'ok') {
+      await this.handlePassFailure(profile.id, leaderboardOutcome);
       return;
     }
 
@@ -927,6 +948,109 @@ export class SyncManager {
     }
   }
 
+  private async flushLeaderboardOutboxPass(
+    profileId: string,
+    remoteProfileId: string,
+    opts: { readonly keepalive: boolean },
+  ): Promise<'ok' | 'offline' | 'unauthorized' | { readonly error: string }> {
+    const queued = await listPendingLeaderboardSubmissions(profileId);
+    if (queued.length === 0) {
+      return 'ok';
+    }
+
+    let submittedAny = false;
+    for (const item of queued) {
+      const outcome = await this.api.submitLeaderboardResult(
+        {
+          ...item.payload,
+          profileId: remoteProfileId,
+        },
+        opts,
+      );
+
+      if (outcome.ok) {
+        await deletePendingLeaderboardSubmission(item.localProfileId, item.gameId, item.puzzleId);
+        submittedAny = true;
+        continue;
+      }
+
+      if (outcome.kind === 'rejected') {
+        // Permanent rejection (400/404/422, e.g., local WASM overflow puzzle unknown to server):
+        // evict cleanly without retrying forever or blocking sync.
+        await deletePendingLeaderboardSubmission(item.localProfileId, item.gameId, item.puzzleId);
+        continue;
+      }
+
+      if (outcome.kind === 'unauthorized') {
+        return 'unauthorized';
+      }
+      if (outcome.kind === 'offline') {
+        return 'offline';
+      }
+      return { error: outcome.message ?? 'Leaderboard submission failed.' };
+    }
+
+    if (submittedAny) {
+      this.onLeaderboardSubmitted?.(profileId);
+    }
+    return 'ok';
+  }
+
+  async enqueueLeaderboardSubmission(
+    localProfileId: string,
+    gameId: string,
+    input: Omit<LeaderboardSubmissionPayload, 'profileId' | 'gameId'>,
+  ): Promise<LeaderboardSubmitOutcome> {
+    const profile = await getProfile(localProfileId);
+    if (!profile?.remoteProfileId) {
+      return { status: 'skipped' };
+    }
+
+    const remoteProfileId = profile.remoteProfileId;
+    const payload: LeaderboardSubmissionPayload = {
+      ...input,
+      profileId: remoteProfileId,
+      gameId,
+    };
+
+    await putPendingLeaderboardSubmission({
+      localProfileId,
+      gameId,
+      puzzleId: input.puzzleId,
+      remoteProfileId,
+      payload,
+      queuedAt: this.now().toISOString(),
+    });
+
+    if (!this.signedIn || !isNavigatorOnline()) {
+      await this.refreshStateForProfile(localProfileId);
+      return { status: 'queued' };
+    }
+
+    const outcome = await this.api.submitLeaderboardResult(payload);
+    if (outcome.ok) {
+      await deletePendingLeaderboardSubmission(localProfileId, gameId, input.puzzleId);
+      this.onLeaderboardSubmitted?.(localProfileId);
+      await this.refreshStateForProfile(localProfileId);
+      return { status: 'submitted', result: outcome.result };
+    }
+
+    if (outcome.kind === 'rejected') {
+      await deletePendingLeaderboardSubmission(localProfileId, gameId, input.puzzleId);
+      await this.refreshStateForProfile(localProfileId);
+      return { status: 'skipped' };
+    }
+
+    if (outcome.kind === 'unauthorized') {
+      this.setSessionActive(false);
+      this.onUnauthorized?.();
+      return { status: 'queued' };
+    }
+
+    await this.refreshStateForProfile(localProfileId);
+    return { status: 'queued' };
+  }
+
   createGameCloudSyncService(profileId: string, gameId: string): CloudSyncService {
     return {
       requestSync: () => this.syncNow(profileId),
@@ -937,6 +1061,17 @@ export class SyncManager {
         resolution === 'local'
           ? this.resolveConflictKeepLocal(profileId, targetGameId, slot)
           : this.resolveConflictKeepCloud(profileId, targetGameId, slot),
+    };
+  }
+
+  createGameLeaderboardService(
+    profileId: string,
+    gameId: string,
+    onOpenLeaderboard: (target: LeaderboardOpenTarget) => void,
+  ): LeaderboardService {
+    return {
+      submitResult: (input) => this.enqueueLeaderboardSubmission(profileId, gameId, input),
+      openLeaderboard: onOpenLeaderboard,
     };
   }
 }

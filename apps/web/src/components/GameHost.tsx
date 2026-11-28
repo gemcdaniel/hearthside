@@ -1,6 +1,7 @@
 import type {
   AudioService,
   CloudSyncService,
+  LeaderboardService,
   Profile,
   ProfileSettings,
 } from '@hearthside/game-core';
@@ -18,6 +19,7 @@ interface GameHostProps {
   readonly isSignedIn?: boolean;
   readonly reloadKey?: number;
   readonly syncService?: CloudSyncService;
+  readonly leaderboardService?: LeaderboardService;
   readonly onExitToLibrary: () => void;
 }
 
@@ -30,6 +32,7 @@ export function GameHost({
   isSignedIn = false,
   reloadKey = 0,
   syncService,
+  leaderboardService,
   onExitToLibrary,
 }: GameHostProps) {
   const entry = shellGameRegistry.get(gameId);
@@ -59,6 +62,7 @@ export function GameHost({
     audio,
     puzzleSync,
     ...(syncService ? { sync: syncService } : {}),
+    ...(leaderboardService ? { leaderboards: leaderboardService } : {}),
     onExitToLibrary,
   };
 

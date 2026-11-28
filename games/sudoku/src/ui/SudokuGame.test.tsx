@@ -582,4 +582,86 @@ describe('SudokuGame UI', () => {
     await screen.findByRole('grid', { name: '9 by 9 Sudoku board' });
     expect(generateSpy).not.toHaveBeenCalled();
   });
+
+  it('shows household rank + View Leaderboard on Victory modal when online and queued note when offline', async () => {
+    const nearlySolved: PuzzleRecord = {
+      id: 'daily-2026-11-28-easy',
+      seed: 98765,
+      engineVersion: '0.1.0-dev',
+      difficulty: 'easy',
+      techniquesRequired: ['naked_single'],
+      clues: '023968154549371682186254379432716598615489237978532416257843961391627845864195723',
+      solution: '723968154549371682186254379432716598615489237978532416257843961391627845864195723',
+    };
+    const wasmClient = createMockWasmClient({ generatePuzzle: vi.fn(async () => nearlySolved) });
+    const openLeaderboard = vi.fn();
+    const submitResult = vi.fn().mockResolvedValue({
+      status: 'submitted',
+      result: {
+        created: true,
+        entry: {
+          rank: 1,
+          profileId: 'remote-p1',
+          profileName: 'Alex',
+          avatarId: 'hearth',
+          accentColor: 'cobalt',
+          isChild: false,
+          householdName: 'Oakwood',
+          isOwnHousehold: true,
+          elapsedMs: 1200,
+          hintsUsed: 0,
+          completedAt: '2026-11-28T10:00:00.000Z',
+        },
+        householdRank: 1,
+        totalHouseholdEntries: 3,
+      },
+    });
+
+    const onlineView = render(
+      <SudokuGame
+        services={{
+          ...createTestServices(),
+          leaderboards: { submitResult, openLeaderboard },
+        }}
+        initialMode="daily:2026-11-28:easy"
+        wasmClient={wasmClient}
+      />,
+    );
+
+    const grid1 = await screen.findByRole('grid', { name: '9 by 9 Sudoku board' });
+    fireEvent.pointerDown(within(grid1).getAllByRole('gridcell')[0]!);
+    fireEvent.click(screen.getByRole('button', { name: /Enter 7,/ }));
+
+    const victory1 = await screen.findByRole('dialog', { name: /Puzzle Solved/i });
+    expect(await within(victory1).findByText(/#1 of 3 in Household/)).toBeInTheDocument();
+    fireEvent.click(within(victory1).getByRole('button', { name: 'View Leaderboard' }));
+    expect(openLeaderboard).toHaveBeenCalledWith({
+      kind: 'daily',
+      date: '2026-11-28',
+      difficulty: 'easy',
+    });
+
+    onlineView.unmount();
+
+    const queuedSubmit = vi.fn().mockResolvedValue({ status: 'queued' });
+    render(
+      <SudokuGame
+        services={{
+          ...createTestServices(),
+          leaderboards: { submitResult: queuedSubmit, openLeaderboard },
+        }}
+        initialMode="daily:2026-11-28:easy"
+        wasmClient={wasmClient}
+      />,
+    );
+
+    const grid2 = await screen.findByRole('grid', { name: '9 by 9 Sudoku board' });
+    fireEvent.pointerDown(within(grid2).getAllByRole('gridcell')[0]!);
+    fireEvent.click(screen.getByRole('button', { name: /Enter 7,/ }));
+
+    const victory2 = await screen.findByRole('dialog', { name: /Puzzle Solved/i });
+    expect(
+      await within(victory2).findByText('Saved — will post to leaderboard when online'),
+    ).toBeInTheDocument();
+  });
 });

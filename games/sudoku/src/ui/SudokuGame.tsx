@@ -44,6 +44,7 @@ import type { PuzzleRecord, SudokuDifficulty, SudokuMode, SudokuState } from '..
 import { getDefaultSudokuWasmClient, type SudokuWasmClient } from '../wasm/sudokuWasmClient';
 import { SudokuBoard } from './SudokuBoard';
 import { SudokuControls } from './SudokuControls';
+import type { VictoryLeaderboardState } from './SudokuVictoryModal';
 import {
   BackIcon,
   NewPuzzleIcon,
@@ -69,12 +70,14 @@ export interface SudokuGameProps {
 }
 
 interface VictorySummary {
+  readonly puzzleId: string;
   readonly mode: SudokuMode;
   readonly difficulty: SudokuDifficulty;
   readonly dailyDate?: string;
   readonly elapsedMs: number;
   readonly hintsUsed: number;
   readonly isNewPersonalBest: boolean;
+  readonly leaderboardState?: VictoryLeaderboardState;
 }
 
 function formatDifficultyLabel(difficulty: SudokuDifficulty): string {
@@ -566,6 +569,9 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
     const snapshot = state;
     async function finalizeWin() {
       let isNewPersonalBest = false;
+      const completedAt = new Date().toISOString();
+      const solutionGrid = snapshot.cells.map((cell) => String(cell.value)).join('');
+
       try {
         const existingStats = await servicesRef.current.storage.loadStats();
         const base = existingStats
@@ -585,7 +591,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
           schemaVersion: SUDOKU_STATS_SCHEMA_VERSION,
           profileId: servicesRef.current.activeProfile.id,
           gameId: 'sudoku',
-          updatedAt: new Date().toISOString(),
+          updatedAt: completedAt,
           stats: result.stats,
         });
       } catch {
@@ -593,7 +599,6 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
       }
 
       try {
-        const completedAt = new Date().toISOString();
         await servicesRef.current.storage.recordCompletedPuzzle({
           profileId: servicesRef.current.activeProfile.id,
           gameId: 'sudoku',
@@ -624,6 +629,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
       }
 
       setVictorySummary({
+        puzzleId: snapshot.puzzle.id,
         mode: snapshot.mode,
         difficulty: snapshot.puzzle.difficulty,
         dailyDate: snapshot.dailyDate,
@@ -631,6 +637,49 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
         hintsUsed: snapshot.hintsUsed,
         isNewPersonalBest,
       });
+
+      const leaderboardSvc = servicesRef.current.leaderboards;
+      if (leaderboardSvc) {
+        void leaderboardSvc
+          .submitResult({
+            puzzleId: snapshot.puzzle.id,
+            mode: snapshot.mode,
+            ...(snapshot.dailyDate ? { dailyDate: snapshot.dailyDate } : {}),
+            difficulty: snapshot.puzzle.difficulty,
+            solutionGrid,
+            elapsedMs: snapshot.elapsedMs,
+            hintsUsed: snapshot.hintsUsed,
+            completedAt,
+          })
+          .then((outcome) => {
+            if (lastCompletedIdRef.current !== snapshot.puzzle.id) {
+              return;
+            }
+            if (outcome.status === 'submitted') {
+              setVictorySummary((prev) =>
+                prev && prev.puzzleId === snapshot.puzzle.id
+                  ? {
+                      ...prev,
+                      leaderboardState: {
+                        kind: 'submitted',
+                        rank: outcome.result.householdRank,
+                        total: outcome.result.totalHouseholdEntries,
+                      },
+                    }
+                  : prev,
+              );
+            } else if (outcome.status === 'queued') {
+              setVictorySummary((prev) =>
+                prev && prev.puzzleId === snapshot.puzzle.id
+                  ? { ...prev, leaderboardState: { kind: 'queued' } }
+                  : prev,
+              );
+            }
+          })
+          .catch(() => {
+            // Submission failure is non-fatal; offline queue remains untouched.
+          });
+      }
     }
 
     void finalizeWin();
@@ -1419,6 +1468,31 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
             elapsedMs={victorySummary.elapsedMs}
             hintsUsed={victorySummary.hintsUsed}
             isNewPersonalBest={victorySummary.isNewPersonalBest}
+            leaderboardState={victorySummary.leaderboardState}
+            onViewLeaderboard={
+              services.leaderboards
+                ? () => {
+                    const target = victorySummary;
+                    if (!target) {
+                      return;
+                    }
+                    setVictorySummary(null);
+                    services.leaderboards?.openLeaderboard(
+                      target.mode === 'daily'
+                        ? {
+                            kind: 'daily',
+                            date: target.dailyDate,
+                            difficulty: target.difficulty,
+                          }
+                        : {
+                            kind: 'puzzle',
+                            puzzleId: target.puzzleId,
+                            label: `${formatDifficultyLabel(target.difficulty)} Puzzle`,
+                          },
+                    );
+                  }
+                : undefined
+            }
             onPlayAgain={() => void startNewPuzzle()}
             onViewStats={() => setStatsOpen(true)}
             onExitToLibrary={handleExit}
