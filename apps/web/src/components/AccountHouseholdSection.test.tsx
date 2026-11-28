@@ -236,4 +236,188 @@ describe('AccountHouseholdSection', () => {
     });
     expect(screen.getByText('Added child profile "Sammy".')).toBeInTheDocument();
   });
+
+  it('renders Cloud Sync Status card only for linked profiles across idle, syncing, offline, and conflict states', () => {
+    const providers: AuthProvidersInfo = {
+      bootstrapRequired: false,
+      emailEnabled: true,
+      oidcEnabled: false,
+      oidcProviderName: '',
+    };
+    const signedInSession: AuthSessionPayload = {
+      user: {
+        id: 'u-1',
+        householdId: 'hh-1',
+        email: 'alex@example.com',
+        displayName: 'Alex',
+        role: 'owner',
+        createdAt: '2026-11-27T00:00:00.000Z',
+      },
+      household: { id: 'hh-1', name: 'Oakwood', createdAt: '2026-11-27T00:00:00.000Z' },
+      profiles: [],
+    };
+    const linkedProfile = {
+      ...LOCAL_PROFILE,
+      remoteProfileId: 'remote-p1',
+      householdId: 'hh-1',
+      isChild: false,
+    };
+
+    // Unlinked profile: Cloud Sync Status card stays hidden
+    const { rerender } = render(
+      <AccountHouseholdSection
+        session={signedInSession}
+        providers={providers}
+        backendState="ready"
+        cachedBankCount={0}
+        localProfiles={[LOCAL_PROFILE]}
+        activeProfile={LOCAL_PROFILE}
+        syncState={{ status: 'idle', pendingCount: 0, conflicts: [] }}
+        onRefreshStatus={vi.fn().mockResolvedValue(undefined)}
+        onSessionChanged={vi.fn().mockResolvedValue(undefined)}
+        onLinkLocalProfile={vi.fn()}
+        onUnlinkLocalProfile={vi.fn()}
+        onAddRemoteProfileToDevice={vi.fn()}
+        onSyncNow={vi.fn().mockResolvedValue(undefined)}
+        onOpenConflicts={vi.fn()}
+        onClearPendingInvite={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('region', { name: 'Cloud Sync Status' })).not.toBeInTheDocument();
+
+    // Linked idle -> Synced + formatted lastSyncedAt + enabled Sync Now
+    rerender(
+      <AccountHouseholdSection
+        session={signedInSession}
+        providers={providers}
+        backendState="ready"
+        cachedBankCount={5}
+        localProfiles={[linkedProfile]}
+        activeProfile={linkedProfile}
+        syncState={{
+          status: 'idle',
+          lastSyncedAt: '2026-11-27T16:10:00.000Z',
+          pendingCount: 0,
+          conflicts: [],
+        }}
+        onRefreshStatus={vi.fn().mockResolvedValue(undefined)}
+        onSessionChanged={vi.fn().mockResolvedValue(undefined)}
+        onLinkLocalProfile={vi.fn()}
+        onUnlinkLocalProfile={vi.fn()}
+        onAddRemoteProfileToDevice={vi.fn()}
+        onSyncNow={vi.fn().mockResolvedValue(undefined)}
+        onOpenConflicts={vi.fn()}
+        onClearPendingInvite={vi.fn()}
+      />,
+    );
+    const card = screen.getByRole('region', { name: 'Cloud Sync Status' });
+    expect(within(card).getByText('Synced')).toBeInTheDocument();
+    expect(within(card).getByText(/Last synced:/)).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'Sync Now' })).toBeEnabled();
+
+    // Syncing -> disabled Syncing… button
+    rerender(
+      <AccountHouseholdSection
+        session={signedInSession}
+        providers={providers}
+        backendState="ready"
+        cachedBankCount={5}
+        localProfiles={[linkedProfile]}
+        activeProfile={linkedProfile}
+        syncState={{ status: 'syncing', pendingCount: 2, conflicts: [] }}
+        onRefreshStatus={vi.fn().mockResolvedValue(undefined)}
+        onSessionChanged={vi.fn().mockResolvedValue(undefined)}
+        onLinkLocalProfile={vi.fn()}
+        onUnlinkLocalProfile={vi.fn()}
+        onAddRemoteProfileToDevice={vi.fn()}
+        onSyncNow={vi.fn().mockResolvedValue(undefined)}
+        onOpenConflicts={vi.fn()}
+        onClearPendingInvite={vi.fn()}
+      />,
+    );
+    expect(within(card).getByRole('button', { name: 'Syncing…' })).toBeDisabled();
+    expect(within(card).getByText(/2 pending changes/)).toBeInTheDocument();
+
+    // Offline -> Offline badge + disabled Sync Now
+    rerender(
+      <AccountHouseholdSection
+        session={signedInSession}
+        providers={providers}
+        backendState="ready"
+        cachedBankCount={5}
+        localProfiles={[linkedProfile]}
+        activeProfile={linkedProfile}
+        syncState={{ status: 'offline', pendingCount: 1, conflicts: [] }}
+        onRefreshStatus={vi.fn().mockResolvedValue(undefined)}
+        onSessionChanged={vi.fn().mockResolvedValue(undefined)}
+        onLinkLocalProfile={vi.fn()}
+        onUnlinkLocalProfile={vi.fn()}
+        onAddRemoteProfileToDevice={vi.fn()}
+        onSyncNow={vi.fn().mockResolvedValue(undefined)}
+        onOpenConflicts={vi.fn()}
+        onClearPendingInvite={vi.fn()}
+      />,
+    );
+    expect(within(card).getByText('Offline — changes saved locally')).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'Sync Now' })).toBeDisabled();
+
+    // Conflict -> Sync conflict badge + Resolve Conflict button opens conflict modal
+    const onOpenConflicts = vi.fn();
+    rerender(
+      <AccountHouseholdSection
+        session={signedInSession}
+        providers={providers}
+        backendState="ready"
+        cachedBankCount={5}
+        localProfiles={[linkedProfile]}
+        activeProfile={linkedProfile}
+        syncState={{
+          status: 'conflict',
+          pendingCount: 1,
+          conflicts: [
+            {
+              profileId: linkedProfile.id,
+              gameId: 'sudoku',
+              slot: 'easy',
+              localSave: {
+                schemaVersion: 1,
+                profileId: linkedProfile.id,
+                gameId: 'sudoku',
+                slot: 'easy',
+                updatedAt: '2026-11-27T16:12:00.000Z',
+                payload: '{}',
+              },
+              serverSave: {
+                profileId: 'remote-p1',
+                gameId: 'sudoku',
+                slot: 'easy',
+                schemaVersion: 1,
+                revision: 2,
+                puzzleId: 'p1',
+                completed: false,
+                deleted: false,
+                elapsedMs: 1000,
+                filledCells: 20,
+                payload: '{}',
+                clientUpdatedAt: '2026-11-27T16:11:00.000Z',
+                updatedAt: '2026-11-27T16:11:01.000Z',
+              },
+              detectedAt: '2026-11-27T16:13:00.000Z',
+            },
+          ],
+        }}
+        onRefreshStatus={vi.fn().mockResolvedValue(undefined)}
+        onSessionChanged={vi.fn().mockResolvedValue(undefined)}
+        onLinkLocalProfile={vi.fn()}
+        onUnlinkLocalProfile={vi.fn()}
+        onAddRemoteProfileToDevice={vi.fn()}
+        onSyncNow={vi.fn().mockResolvedValue(undefined)}
+        onOpenConflicts={onOpenConflicts}
+        onClearPendingInvite={vi.fn()}
+      />,
+    );
+    expect(within(card).getByText('Sync conflict')).toBeInTheDocument();
+    fireEvent.click(within(card).getByRole('button', { name: 'Resolve Conflict' }));
+    expect(onOpenConflicts).toHaveBeenCalledTimes(1);
+  });
 });

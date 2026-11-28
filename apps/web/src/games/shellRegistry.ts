@@ -11,6 +11,7 @@ import {
   SudokuGame,
   SudokuLibraryExtras,
   normalizeSudokuStats,
+  parseSudokuLaunchMode,
   recomputeSudokuStatsFromRecords,
   sudokuPlugin,
 } from '@hearthside/game-sudoku';
@@ -24,6 +25,7 @@ export interface GameMountProps {
 export interface ShellGameEntry extends GamePluginDescriptor {
   readonly Component: ComponentType<GameMountProps>;
   readonly LibraryExtras?: ComponentType<GameLibraryExtrasProps>;
+  readonly resolveSlot?: (modeId?: string) => string;
   readonly extractSaveSummary?: (payload: unknown) => SaveSummaryMetadata | null;
   readonly recomputeStats?: (
     records: readonly PuzzleRecordLogEntry[],
@@ -37,6 +39,7 @@ shellGameRegistry.register({
   schemaVersion: sudokuPlugin.schemaVersion,
   Component: SudokuGame,
   LibraryExtras: SudokuLibraryExtras,
+  resolveSlot: (modeId) => parseSudokuLaunchMode(modeId).slot,
   extractSaveSummary: (payload) => {
     if (typeof payload !== 'string') {
       return null;

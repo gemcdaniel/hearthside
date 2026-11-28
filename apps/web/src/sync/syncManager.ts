@@ -30,7 +30,6 @@ import {
   putStats,
   putSyncConflict,
   putSyncedSave,
-  purgeSaveSlot,
   saveProfileSettings,
   upsertPuzzleRecord,
 } from '../storage/hearthsideDb';
@@ -51,7 +50,12 @@ export interface SyncManagerOptions {
     legacyBaseline?: unknown,
   ) => { readonly schemaVersion: number; readonly stats: unknown } | null;
   readonly onRemoteSettingsApplied?: (profileId: string, settings: ProfileSettings) => void;
-  readonly onRemoteSavesApplied?: (profileId: string, gameId: string) => void;
+  readonly onRemoteSavesApplied?: (
+    profileId: string,
+    gameId: string,
+    slots?: readonly string[],
+  ) => void;
+  readonly onRemoteRecordsApplied?: (profileId: string, gameId: string) => void;
   readonly onUnauthorized?: () => void;
   readonly now?: () => Date;
 }
@@ -118,7 +122,12 @@ export class SyncManager {
     legacyBaseline?: unknown,
   ) => { readonly schemaVersion: number; readonly stats: unknown } | null;
   private readonly onRemoteSettingsApplied?: (profileId: string, settings: ProfileSettings) => void;
-  private readonly onRemoteSavesApplied?: (profileId: string, gameId: string) => void;
+  private readonly onRemoteSavesApplied?: (
+    profileId: string,
+    gameId: string,
+    slots?: readonly string[],
+  ) => void;
+  private readonly onRemoteRecordsApplied?: (profileId: string, gameId: string) => void;
   private readonly onUnauthorized?: () => void;
   private readonly now: () => Date;
 
@@ -175,6 +184,7 @@ export class SyncManager {
     this.recomputeGameStatsFn = options.recomputeGameStats ?? defaultRecomputeGameStats;
     this.onRemoteSettingsApplied = options.onRemoteSettingsApplied;
     this.onRemoteSavesApplied = options.onRemoteSavesApplied;
+    this.onRemoteRecordsApplied = options.onRemoteRecordsApplied;
     this.onUnauthorized = options.onUnauthorized;
     this.now = options.now ?? (() => new Date());
   }
@@ -497,6 +507,7 @@ export class SyncManager {
     const gameIds = new Set(res.data.records.map((r) => r.gameId));
     for (const gameId of gameIds) {
       await this.recomputeAndPersistStats(profileId, gameId);
+      this.onRemoteRecordsApplied?.(profileId, gameId);
     }
     return 'ok';
   }
@@ -614,15 +625,13 @@ export class SyncManager {
 
       if (pushRes.resolution === 'auto_completed_remote') {
         await this.applyServerSaveLocally(profileId, pushRes.save, save.summary?.label);
-      } else if (pushRes.save.deleted) {
-        await purgeSaveSlot(profileId, save.gameId, save.slot);
-        await deleteSyncConflict(profileId, save.gameId, save.slot);
       } else {
         await putSyncedSave({
           ...save,
           baseRevision: pushRes.save.revision,
           dirty: false,
-          deleted: false,
+          deleted: pushRes.save.deleted,
+          payload: pushRes.save.deleted ? null : save.payload,
           clientUpdatedAt: pushRes.save.clientUpdatedAt,
         });
         await deleteSyncConflict(profileId, save.gameId, save.slot);
@@ -659,6 +668,7 @@ export class SyncManager {
       const affectedGames = new Set(snapshot.records.map((r) => r.gameId));
       for (const gameId of affectedGames) {
         await this.recomputeAndPersistStats(profileId, gameId);
+        this.onRemoteRecordsApplied?.(profileId, gameId);
       }
     }
 
@@ -683,10 +693,28 @@ export class SyncManager {
       const localSave = await getRawSave(profileId, remoteSave.gameId, remoteSave.slot);
       if (!localSave || !localSave.dirty) {
         if (remoteSave.deleted) {
-          await purgeSaveSlot(profileId, remoteSave.gameId, remoteSave.slot);
+          await putSyncedSave({
+            schemaVersion: remoteSave.schemaVersion,
+            profileId,
+            gameId: remoteSave.gameId,
+            slot: remoteSave.slot,
+            updatedAt: remoteSave.updatedAt,
+            clientUpdatedAt: remoteSave.clientUpdatedAt,
+            baseRevision: remoteSave.revision,
+            dirty: false,
+            deleted: true,
+            summary: {
+              elapsedMs: 0,
+              label: formatSlotLabel(remoteSave.slot, localSave?.summary?.label),
+              puzzleId: remoteSave.puzzleId,
+              completed: false,
+              filledCells: 0,
+            },
+            payload: null,
+          });
           await deleteSyncConflict(profileId, remoteSave.gameId, remoteSave.slot);
-          if (localSave) {
-            this.onRemoteSavesApplied?.(profileId, remoteSave.gameId);
+          if (localSave && !localSave.deleted) {
+            this.onRemoteSavesApplied?.(profileId, remoteSave.gameId, [remoteSave.slot]);
           }
         } else {
           await this.applyServerSaveLocally(profileId, remoteSave, localSave?.summary?.label);
@@ -729,10 +757,10 @@ export class SyncManager {
         completed: serverSave.completed,
         filledCells: serverSave.filledCells,
       },
-      payload: serverSave.payload,
+      payload: serverSave.deleted ? null : serverSave.payload,
     });
     await deleteSyncConflict(profileId, serverSave.gameId, serverSave.slot);
-    this.onRemoteSavesApplied?.(profileId, serverSave.gameId);
+    this.onRemoteSavesApplied?.(profileId, serverSave.gameId, [serverSave.slot]);
   }
 
   private async recomputeAndPersistStats(profileId: string, gameId: string): Promise<void> {
@@ -789,19 +817,16 @@ export class SyncManager {
     });
 
     if (res.ok) {
-      if (res.save.deleted) {
-        await purgeSaveSlot(profileId, gameId, slot);
-      } else {
-        await putSyncedSave({
-          ...saveToPush,
-          baseRevision: res.save.revision,
-          dirty: false,
-          deleted: false,
-          clientUpdatedAt: res.save.clientUpdatedAt,
-        });
-      }
+      await putSyncedSave({
+        ...saveToPush,
+        baseRevision: res.save.revision,
+        dirty: false,
+        deleted: res.save.deleted,
+        payload: res.save.deleted ? null : saveToPush.payload,
+        clientUpdatedAt: res.save.clientUpdatedAt,
+      });
       await deleteSyncConflict(profileId, gameId, slot);
-      this.onRemoteSavesApplied?.(profileId, gameId);
+      this.onRemoteSavesApplied?.(profileId, gameId, [slot]);
       await this.refreshStateForProfile(profileId);
       return;
     }
@@ -825,17 +850,11 @@ export class SyncManager {
       return;
     }
 
-    if (conflict.serverSave.deleted) {
-      await purgeSaveSlot(profileId, gameId, slot);
-      await deleteSyncConflict(profileId, gameId, slot);
-      this.onRemoteSavesApplied?.(profileId, gameId);
-    } else {
-      await this.applyServerSaveLocally(
-        profileId,
-        conflict.serverSave,
-        conflict.localSave.summary?.label,
-      );
-    }
+    await this.applyServerSaveLocally(
+      profileId,
+      conflict.serverSave,
+      conflict.localSave.summary?.label,
+    );
     await this.refreshStateForProfile(profileId);
   }
 

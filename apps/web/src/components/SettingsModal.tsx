@@ -6,6 +6,7 @@ import {
   type Profile,
   type ProfileAccentId,
   type ProfileSettings,
+  type SyncStatusState,
 } from '@hearthside/game-core';
 import { ThemeSwitcher, useFocusTrap, type ThemeMode, type ThemeName } from '@hearthside/ui';
 import {
@@ -57,6 +58,7 @@ interface SettingsModalProps {
   readonly providers: AuthProvidersInfo | null;
   readonly backendState: AccountBackendState;
   readonly cachedBankCount: number;
+  readonly syncState?: SyncStatusState;
   readonly pendingInviteToken?: string | null;
   readonly onRefreshAccountStatus: () => Promise<void>;
   readonly onSessionChanged: (next: AuthSessionPayload | null) => Promise<void>;
@@ -67,6 +69,7 @@ interface SettingsModalProps {
   readonly onUnlinkLocalProfile: (localProfileId: string) => Promise<void>;
   readonly onAddRemoteProfileToDevice: (remote: RemoteHouseholdProfile) => Promise<void>;
   readonly onSyncNow: () => Promise<void>;
+  readonly onOpenConflicts?: () => void;
   readonly onClearPendingInvite: () => void;
 }
 
@@ -101,6 +104,7 @@ export function SettingsModal({
   providers,
   backendState,
   cachedBankCount,
+  syncState,
   pendingInviteToken,
   onRefreshAccountStatus,
   onSessionChanged,
@@ -108,6 +112,7 @@ export function SettingsModal({
   onUnlinkLocalProfile,
   onAddRemoteProfileToDevice,
   onSyncNow,
+  onOpenConflicts,
   onClearPendingInvite,
 }: SettingsModalProps) {
   const [newName, setNewName] = useState('');
@@ -297,6 +302,8 @@ export function SettingsModal({
             backendState={backendState}
             cachedBankCount={cachedBankCount}
             localProfiles={profiles}
+            activeProfile={activeProfile}
+            syncState={syncState}
             initialInviteToken={pendingInviteToken}
             onRefreshStatus={onRefreshAccountStatus}
             onSessionChanged={onSessionChanged}
@@ -304,6 +311,7 @@ export function SettingsModal({
             onUnlinkLocalProfile={onUnlinkLocalProfile}
             onAddRemoteProfileToDevice={onAddRemoteProfileToDevice}
             onSyncNow={onSyncNow}
+            onOpenConflicts={onOpenConflicts}
             onClearPendingInvite={onClearPendingInvite}
           />
 

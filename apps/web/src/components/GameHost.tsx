@@ -16,6 +16,7 @@ interface GameHostProps {
   readonly settings: ProfileSettings;
   readonly audio: AudioService;
   readonly isSignedIn?: boolean;
+  readonly reloadKey?: number;
   readonly syncService?: CloudSyncService;
   readonly onExitToLibrary: () => void;
 }
@@ -27,6 +28,7 @@ export function GameHost({
   settings,
   audio,
   isSignedIn = false,
+  reloadKey = 0,
   syncService,
   onExitToLibrary,
 }: GameHostProps) {
@@ -63,7 +65,7 @@ export function GameHost({
   return (
     <section className="hs-game-host" aria-label={entry.metadata.name}>
       <GameComponent
-        key={`${activeProfile.id}:${gameId}:${initialMode ?? ''}`}
+        key={`${activeProfile.id}:${gameId}:${initialMode ?? ''}:${reloadKey}`}
         services={services}
         initialMode={initialMode}
       />

@@ -757,7 +757,7 @@ export async function linkLocalProfileToHousehold(
       profileId: localProfileId,
       ...(prevSyncState?.lastSyncedAt ? { lastSyncedAt: prevSyncState.lastSyncedAt } : {}),
       preferencesDirty: true,
-      preferencesUpdatedAt: prevSyncState?.preferencesUpdatedAt ?? nowIso,
+      preferencesUpdatedAt: prevSyncState?.preferencesUpdatedAt ?? '1970-01-01T00:00:00.000Z',
     } satisfies ProfileSyncStateRecord);
 
     await transactionDone(tx, 'Link local profile with backfill');

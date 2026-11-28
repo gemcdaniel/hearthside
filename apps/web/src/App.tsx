@@ -5,6 +5,8 @@ import {
   type ProfileAccentId,
   type ProfileSettings,
   type SaveSlotSummary,
+  type SaveSyncConflict,
+  type SyncStatusState,
 } from '@hearthside/game-core';
 import { applyThemeToDocument } from '@hearthside/ui';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -16,6 +18,7 @@ import { GameHost } from './components/GameHost';
 import { LibraryView, type SavedSlotsByGame } from './components/LibraryView';
 import { PwaUpdateBanner } from './components/PwaUpdateBanner';
 import { ShellHeader } from './components/ShellHeader';
+import { SyncConflictModal } from './components/SyncConflictModal';
 
 const LazySettingsModal = lazy(() =>
   import('./components/SettingsModal').then((mod) => ({ default: mod.SettingsModal })),
@@ -32,6 +35,7 @@ import {
   getProfileSettings,
   linkLocalProfileToHousehold,
   listSavesForProfileGame,
+  listSyncConflicts,
   requestStoragePersistence,
   saveProfileSettings,
   setStoredActiveProfileId,
@@ -84,10 +88,30 @@ export function App() {
   const [providers, setProviders] = useState<AuthProvidersInfo | null>(null);
   const [backendState, setBackendState] = useState<AccountBackendState>('loading');
   const [cachedBankCount, setCachedBankCount] = useState(0);
+  const [syncState, setSyncState] = useState<SyncStatusState>({
+    status: 'idle',
+    pendingCount: 0,
+    conflicts: [],
+  });
+  const [conflictModalOpen, setConflictModalOpen] = useState(false);
+  const [conflictTargetSlot, setConflictTargetSlot] = useState<{
+    readonly gameId: string;
+    readonly slot: string;
+  } | null>(null);
+  const [pendingLaunchAfterConflict, setPendingLaunchAfterConflict] =
+    useState<ActiveGameLaunch | null>(null);
+  const [pendingCloudUpdate, setPendingCloudUpdate] = useState<{
+    readonly gameId: string;
+    readonly slot: string;
+  } | null>(null);
+  const [gameReloadNonce, setGameReloadNonce] = useState(0);
   const initPromiseRef = useRef<Promise<void> | null>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const conflictButtonRef = useRef<HTMLButtonElement>(null);
   const activeProfileIdRef = useRef<string>(activeProfile.id);
   activeProfileIdRef.current = activeProfile.id;
+  const activeLaunchRef = useRef<ActiveGameLaunch | null>(null);
+  activeLaunchRef.current = activeLaunch;
 
   const games = shellGameRegistry.listMetadata();
   const activeGameName =
@@ -131,9 +155,24 @@ export function App() {
           syncAudioFromSettings(nextSettings);
         }
       },
-      onRemoteSavesApplied: (profileId) => {
+      onRemoteSavesApplied: (profileId, gameId, slots) => {
         if (activeProfileIdRef.current === profileId) {
           void refreshSavedSlots(profileId);
+          setLibraryRefreshVersion((v) => v + 1);
+          const currentLaunch = activeLaunchRef.current;
+          if (currentLaunch && currentLaunch.gameId === gameId) {
+            const activeSlot =
+              shellGameRegistry.get(gameId)?.resolveSlot?.(currentLaunch.modeId) ??
+              currentLaunch.modeId ??
+              'easy';
+            if (!slots || slots.includes(activeSlot)) {
+              setPendingCloudUpdate({ gameId, slot: activeSlot });
+            }
+          }
+        }
+      },
+      onRemoteRecordsApplied: (profileId) => {
+        if (activeProfileIdRef.current === profileId) {
           setLibraryRefreshVersion((v) => v + 1);
         }
       },
@@ -143,6 +182,8 @@ export function App() {
     });
   }
   const syncManager = syncManagerRef.current;
+
+  useEffect(() => syncManager.subscribe(setSyncState), [syncManager]);
 
   useEffect(() => {
     return syncManager.attachWindowListeners();
@@ -390,8 +431,9 @@ export function App() {
     setProfiles((prev) => prev.map((p) => (p.id === localProfileId ? updated : p)));
     if (activeProfile.id === localProfileId) {
       setActiveProfile(updated);
+      syncManager.setActiveProfileId(updated.id);
     }
-    void syncManager.syncNow(localProfileId);
+    await syncManager.syncNow(localProfileId);
   }
 
   async function handleUnlinkLocalProfile(localProfileId: string) {
@@ -420,7 +462,8 @@ export function App() {
       setProfiles((prev) => [...prev, added.profile]);
     }
     applyActiveProfileState(added.profile, added.settings);
-    void syncManager.syncNow(added.profile.id);
+    syncManager.setActiveProfileId(added.profile.id);
+    await syncManager.syncNow(added.profile.id);
   }
 
   async function handleSyncNow() {
@@ -439,14 +482,78 @@ export function App() {
 
   function handleLaunchGame(gameId: string, modeId?: string) {
     audioService.playSfx('tap');
+    const slot = shellGameRegistry.get(gameId)?.resolveSlot?.(modeId) ?? modeId ?? 'easy';
+    const hasConflict = syncState.conflicts.some(
+      (c) => c.profileId === activeProfile.id && c.gameId === gameId && c.slot === slot,
+    );
+    if (hasConflict) {
+      setPendingLaunchAfterConflict({ gameId, modeId });
+      setConflictTargetSlot({ gameId, slot });
+      setConflictModalOpen(true);
+      return;
+    }
+    setPendingCloudUpdate(null);
     setActiveLaunch({ gameId, modeId });
   }
 
   function handleExitToLibrary() {
     setActiveLaunch(null);
+    setPendingCloudUpdate(null);
     setLibraryRefreshVersion((v) => v + 1);
     void refreshSavedSlots(activeProfile.id);
   }
+
+  async function finishConflictResolution(
+    conflict: SaveSyncConflict,
+    resolution: 'local' | 'cloud',
+  ) {
+    if (resolution === 'local') {
+      await syncManager.resolveConflictKeepLocal(
+        conflict.profileId,
+        conflict.gameId,
+        conflict.slot,
+      );
+    } else {
+      await syncManager.resolveConflictKeepCloud(
+        conflict.profileId,
+        conflict.gameId,
+        conflict.slot,
+      );
+    }
+
+    const remaining = await listSyncConflicts(activeProfile.id);
+    if (remaining.length === 0) {
+      setConflictModalOpen(false);
+      setConflictTargetSlot(null);
+    }
+
+    if (
+      pendingLaunchAfterConflict &&
+      pendingLaunchAfterConflict.gameId === conflict.gameId &&
+      (shellGameRegistry.get(conflict.gameId)?.resolveSlot?.(pendingLaunchAfterConflict.modeId) ??
+        pendingLaunchAfterConflict.modeId ??
+        'easy') === conflict.slot
+    ) {
+      const nextLaunch = pendingLaunchAfterConflict;
+      setPendingLaunchAfterConflict(null);
+      setPendingCloudUpdate(null);
+      setActiveLaunch(nextLaunch);
+      return;
+    }
+
+    if (resolution === 'cloud' && activeLaunch && activeLaunch.gameId === conflict.gameId) {
+      const activeSlot =
+        shellGameRegistry.get(activeLaunch.gameId)?.resolveSlot?.(activeLaunch.modeId) ??
+        activeLaunch.modeId ??
+        'easy';
+      if (activeSlot === conflict.slot) {
+        setPendingCloudUpdate(null);
+        setGameReloadNonce((n) => n + 1);
+      }
+    }
+  }
+
+  const showHeaderSyncStatus = session !== null && Boolean(activeProfile.remoteProfileId);
 
   return (
     <div className="hs-shell" data-view={activeLaunch ? 'game' : 'library'}>
@@ -454,11 +561,20 @@ export function App() {
         profiles={profiles}
         activeProfile={activeProfile}
         activeGameName={activeGameName}
+        showSyncStatus={showHeaderSyncStatus}
+        syncState={syncState}
         settingsButtonRef={settingsButtonRef}
+        conflictButtonRef={conflictButtonRef}
         onSelectProfile={(id) => void handleSelectProfile(id)}
         onOpenSettings={() => {
           audioService.playSfx('tap');
           setSettingsOpen(true);
+        }}
+        onOpenConflicts={() => {
+          audioService.playSfx('tap');
+          setConflictTargetSlot(null);
+          setPendingLaunchAfterConflict(null);
+          setConflictModalOpen(true);
         }}
         onNavigateHome={() => {
           if (activeLaunch !== null) {
@@ -477,6 +593,7 @@ export function App() {
             settings={settings}
             audio={audioService}
             isSignedIn={session !== null}
+            reloadKey={gameReloadNonce}
             syncService={activeGameSyncService}
             onExitToLibrary={handleExitToLibrary}
           />
@@ -511,6 +628,7 @@ export function App() {
             providers={providers}
             backendState={backendState}
             cachedBankCount={cachedBankCount}
+            syncState={syncState}
             pendingInviteToken={pendingInviteToken}
             onRefreshAccountStatus={() => refreshAccountStatus()}
             onSessionChanged={handleSessionChanged}
@@ -518,9 +636,56 @@ export function App() {
             onUnlinkLocalProfile={handleUnlinkLocalProfile}
             onAddRemoteProfileToDevice={handleAddRemoteProfileToDevice}
             onSyncNow={handleSyncNow}
+            onOpenConflicts={() => {
+              setSettingsOpen(false);
+              setConflictTargetSlot(null);
+              setPendingLaunchAfterConflict(null);
+              setConflictModalOpen(true);
+            }}
             onClearPendingInvite={() => setPendingInviteToken(null)}
           />
         </Suspense>
+      ) : null}
+
+      <SyncConflictModal
+        open={conflictModalOpen}
+        conflicts={syncState.conflicts}
+        initialTarget={conflictTargetSlot}
+        returnFocusRef={conflictButtonRef}
+        onResolveKeepLocal={(conflict) => finishConflictResolution(conflict, 'local')}
+        onResolveKeepCloud={(conflict) => finishConflictResolution(conflict, 'cloud')}
+        onClose={() => {
+          setConflictModalOpen(false);
+          setConflictTargetSlot(null);
+          setPendingLaunchAfterConflict(null);
+        }}
+      />
+
+      {pendingCloudUpdate && activeLaunch ? (
+        <aside className="hs-cloud-update-banner" role="status" aria-live="polite">
+          <p className="hs-pwa-banner-text">
+            A newer save for this puzzle arrived from another device.
+          </p>
+          <div className="hs-btn-group">
+            <button
+              type="button"
+              className="hs-btn hs-btn-primary"
+              onClick={() => {
+                setPendingCloudUpdate(null);
+                setGameReloadNonce((n) => n + 1);
+              }}
+            >
+              Load Cloud Update
+            </button>
+            <button
+              type="button"
+              className="hs-btn hs-btn-secondary"
+              onClick={() => setPendingCloudUpdate(null)}
+            >
+              Keep Current View
+            </button>
+          </div>
+        </aside>
       ) : null}
 
       <PwaUpdateBanner />

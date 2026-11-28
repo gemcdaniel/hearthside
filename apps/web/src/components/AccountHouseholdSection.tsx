@@ -6,6 +6,7 @@ import {
   type AvatarId,
   type Profile,
   type ProfileAccentId,
+  type SyncStatusState,
 } from '@hearthside/game-core';
 import { useEffect, useState, type FormEvent } from 'react';
 import {
@@ -39,6 +40,8 @@ interface AccountHouseholdSectionProps {
   readonly backendState: AccountBackendState;
   readonly cachedBankCount: number;
   readonly localProfiles: readonly Profile[];
+  readonly activeProfile?: Profile;
+  readonly syncState?: SyncStatusState;
   readonly initialInviteToken?: string | null;
   readonly onRefreshStatus: () => Promise<void>;
   readonly onSessionChanged: (next: AuthSessionPayload | null) => Promise<void>;
@@ -49,7 +52,38 @@ interface AccountHouseholdSectionProps {
   readonly onUnlinkLocalProfile: (localProfileId: string) => Promise<void>;
   readonly onAddRemoteProfileToDevice: (remote: RemoteHouseholdProfile) => Promise<void>;
   readonly onSyncNow: () => Promise<void>;
+  readonly onOpenConflicts?: () => void;
   readonly onClearPendingInvite: () => void;
+}
+
+function formatSyncBadge(
+  syncState: SyncStatusState | undefined,
+  backendState: AccountBackendState,
+): { readonly label: string; readonly tone: 'success' | 'warning' | 'error' } {
+  if (syncState?.status === 'conflict' || (syncState && syncState.conflicts.length > 0)) {
+    return { label: 'Sync conflict', tone: 'warning' };
+  }
+  if (syncState?.status === 'error') {
+    return { label: 'Sync error', tone: 'error' };
+  }
+  if (syncState?.status === 'offline' || backendState === 'offline') {
+    return { label: 'Offline — changes saved locally', tone: 'warning' };
+  }
+  if (syncState?.status === 'syncing') {
+    return { label: 'Syncing…', tone: 'warning' };
+  }
+  return { label: 'Synced', tone: 'success' };
+}
+
+function formatLastSynced(iso: string | undefined): string {
+  if (!iso) {
+    return 'Not synced yet';
+  }
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) {
+    return 'Not synced yet';
+  }
+  return `Last synced: ${new Date(ms).toLocaleString()}`;
 }
 
 function formatInviteMode(mode: InviteMode): string {
@@ -75,6 +109,8 @@ export function AccountHouseholdSection({
   backendState,
   cachedBankCount,
   localProfiles,
+  activeProfile,
+  syncState,
   initialInviteToken,
   onRefreshStatus,
   onSessionChanged,
@@ -82,6 +118,7 @@ export function AccountHouseholdSection({
   onUnlinkLocalProfile,
   onAddRemoteProfileToDevice,
   onSyncNow,
+  onOpenConflicts,
   onClearPendingInvite,
 }: AccountHouseholdSectionProps) {
   const [authTab, setAuthTab] = useState<'login' | 'register'>(
@@ -151,6 +188,13 @@ export function AccountHouseholdSection({
   }, [session]);
 
   const unlinkedLocalProfiles = localProfiles.filter((p) => !p.remoteProfileId);
+  const isActiveProfileLinked = Boolean(activeProfile?.remoteProfileId);
+  const syncBadge = formatSyncBadge(syncState, backendState);
+  const syncDisabled =
+    syncBusy ||
+    syncState?.status === 'syncing' ||
+    syncState?.status === 'offline' ||
+    backendState === 'offline';
 
   async function refreshSessionAndInvites() {
     await onRefreshStatus();
@@ -363,17 +407,19 @@ export function AccountHouseholdSection({
               </p>
             </div>
             <div className="hs-btn-group">
-              <button
-                type="button"
-                className="hs-btn hs-btn-secondary"
-                disabled={syncBusy}
-                onClick={() => {
-                  setSyncBusy(true);
-                  void onSyncNow().finally(() => setSyncBusy(false));
-                }}
-              >
-                {syncBusy ? 'Syncing...' : 'Sync Now'}
-              </button>
+              {!isActiveProfileLinked ? (
+                <button
+                  type="button"
+                  className="hs-btn hs-btn-secondary"
+                  disabled={syncDisabled}
+                  onClick={() => {
+                    setSyncBusy(true);
+                    void onSyncNow().finally(() => setSyncBusy(false));
+                  }}
+                >
+                  {syncBusy ? 'Syncing...' : 'Sync Now'}
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="hs-btn hs-btn-secondary"
@@ -384,6 +430,53 @@ export function AccountHouseholdSection({
               </button>
             </div>
           </div>
+
+          {isActiveProfileLinked ? (
+            <section className="hs-sync-card" aria-label="Cloud Sync Status">
+              <div className="hs-sync-card-info">
+                <div className="hs-sync-card-header">
+                  <strong className="hs-profile-row-name">
+                    Cloud Sync ({activeProfile?.name})
+                  </strong>
+                  <span className="hs-badge" data-tone={syncBadge.tone}>
+                    {syncBadge.label}
+                  </span>
+                </div>
+                <p className="hs-sync-card-meta">
+                  {formatLastSynced(syncState?.lastSyncedAt)}
+                  {syncState && syncState.pendingCount > 0
+                    ? ` · ${syncState.pendingCount} pending change${syncState.pendingCount === 1 ? '' : 's'}`
+                    : ''}
+                </p>
+                {syncState?.status === 'error' && syncState.lastError ? (
+                  <p className="hs-sync-card-meta" role="status">
+                    {syncState.lastError}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="hs-btn-group">
+                {syncState && syncState.conflicts.length > 0 && onOpenConflicts ? (
+                  <button type="button" className="hs-btn hs-btn-primary" onClick={onOpenConflicts}>
+                    {syncState.conflicts.length === 1
+                      ? 'Resolve Conflict'
+                      : `Resolve Conflicts (${syncState.conflicts.length})`}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="hs-btn hs-btn-secondary"
+                  disabled={syncDisabled}
+                  onClick={() => {
+                    setSyncBusy(true);
+                    void onSyncNow().finally(() => setSyncBusy(false));
+                  }}
+                >
+                  {syncBusy || syncState?.status === 'syncing' ? 'Syncing…' : 'Sync Now'}
+                </button>
+              </div>
+            </section>
+          ) : null}
 
           <div className="hs-account-subsection">
             <h4 className="hs-settings-subheading">Household Profiles</h4>

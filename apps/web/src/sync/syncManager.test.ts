@@ -164,7 +164,7 @@ describe('SyncManager background orchestration and conflict flows', () => {
     const saved = await storage.loadSave('easy');
     expect(saved).toMatchObject({ baseRevision: 1, dirty: false });
 
-    // 2. Delete save -> creates tombstone -> syncs deleted=true -> purges local tombstone
+    // 2. Delete save -> creates tombstone -> syncs deleted=true -> retains tombstone revision
     await deleteSave(localId, 'sudoku', 'easy');
     expect(await getRawSave(localId, 'sudoku', 'easy')).toMatchObject({
       deleted: true,
@@ -172,7 +172,34 @@ describe('SyncManager background orchestration and conflict flows', () => {
       baseRevision: 1,
     });
     await manager.syncNow(localId);
-    expect(await getRawSave(localId, 'sudoku', 'easy')).toBeNull();
+    expect(await storage.loadSave('easy')).toBeNull();
+    expect(await getRawSave(localId, 'sudoku', 'easy')).toMatchObject({
+      deleted: true,
+      dirty: false,
+      baseRevision: 2,
+    });
+
+    // Follow-up game on the same slot inherits baseRevision: 2 and fast-forwards cleanly
+    await storage.saveGame({
+      schemaVersion: 1,
+      profileId: localId,
+      gameId: 'sudoku',
+      slot: 'easy',
+      updatedAt: '2026-11-27T16:00:30.000Z',
+      summary: { puzzleId: 'puz-easy-2', completed: false, elapsedMs: 500, filledCells: 5 },
+      payload: '{"move":2}',
+    });
+    expect(await getRawSave(localId, 'sudoku', 'easy')).toMatchObject({
+      deleted: false,
+      dirty: true,
+      baseRevision: 2,
+    });
+    await manager.syncNow(localId);
+    expect(await storage.loadSave('easy')).toMatchObject({
+      deleted: false,
+      dirty: false,
+      baseRevision: 3,
+    });
 
     // 3. auto_completed_remote updates local save cleanly with server completed snapshot
     await storage.saveGame({
@@ -206,7 +233,7 @@ describe('SyncManager background orchestration and conflict flows', () => {
       payload: '{"remoteCompleted":true}',
       summary: { completed: true, filledCells: 81 },
     });
-    expect(onRemoteSavesApplied).toHaveBeenCalledWith(localId, 'sudoku');
+    expect(onRemoteSavesApplied).toHaveBeenCalledWith(localId, 'sudoku', ['medium']);
   });
 
   it('captures 409 conflicts safely and resolves via Keep Local (force) or Keep Cloud', async () => {

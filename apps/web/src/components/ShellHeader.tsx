@@ -1,4 +1,4 @@
-import type { Profile } from '@hearthside/game-core';
+import type { Profile, SyncStatusState } from '@hearthside/game-core';
 import { useFocusTrap } from '@hearthside/ui';
 import {
   useEffect,
@@ -15,9 +15,13 @@ interface ShellHeaderProps {
   readonly profiles: readonly Profile[];
   readonly activeProfile: Profile;
   readonly activeGameName: string | null;
+  readonly showSyncStatus?: boolean;
+  readonly syncState?: SyncStatusState;
   readonly settingsButtonRef?: RefObject<HTMLButtonElement | null>;
+  readonly conflictButtonRef?: RefObject<HTMLButtonElement | null>;
   readonly onSelectProfile: (profileId: string) => void;
   readonly onOpenSettings: () => void;
+  readonly onOpenConflicts?: () => void;
   readonly onNavigateHome: () => void;
 }
 
@@ -25,9 +29,13 @@ export function ShellHeader({
   profiles,
   activeProfile,
   activeGameName,
+  showSyncStatus = false,
+  syncState,
   settingsButtonRef,
+  conflictButtonRef,
   onSelectProfile,
   onOpenSettings,
+  onOpenConflicts,
   onNavigateHome,
 }: ShellHeaderProps) {
   const appTitle = getAppTitle();
@@ -111,6 +119,30 @@ export function ShellHeader({
       </div>
 
       <div className="hs-header-actions">
+        {showSyncStatus && syncState && syncState.conflicts.length > 0 && onOpenConflicts ? (
+          <button
+            ref={conflictButtonRef}
+            type="button"
+            className="hs-sync-pill"
+            data-tone="conflict"
+            onClick={onOpenConflicts}
+          >
+            {syncState.conflicts.length === 1
+              ? 'Resolve Conflict'
+              : `Resolve Conflicts (${syncState.conflicts.length})`}
+          </button>
+        ) : showSyncStatus && syncState?.status === 'error' ? (
+          <button
+            type="button"
+            className="hs-sync-pill"
+            data-tone="error"
+            aria-label="Sync error — open Settings"
+            onClick={onOpenSettings}
+          >
+            Sync Error
+          </button>
+        ) : null}
+
         <div className="hs-profile-switcher" ref={switcherRef}>
           <button
             ref={triggerRef}

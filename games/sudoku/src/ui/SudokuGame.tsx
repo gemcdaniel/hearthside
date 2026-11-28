@@ -1005,7 +1005,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
     lastSelectedCellRef.current = null;
     const fresh = createSudokuState(nextPuzzle, { mode: 'standard' });
     servicesRef.current.audio.playSfx('tap');
-    applyAndSave(fresh);
+    applyAndSave(fresh, 'pause');
     emitPuzzleAttemptStarted(nextPuzzle, 'standard');
     void incrementStartedStats();
   }, [
