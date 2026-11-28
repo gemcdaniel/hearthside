@@ -365,6 +365,8 @@ func writeAuthError(w http.ResponseWriter, r *http.Request, logger *slog.Logger,
 		WriteError(w, r, http.StatusForbidden, "oidc_email_not_verified", "OIDC provider must verify email before linking an existing account")
 	case errors.Is(err, auth.ErrConflict):
 		WriteError(w, r, http.StatusConflict, "conflict", "operation conflicts with existing state")
+	case errors.Is(err, auth.ErrInvalidNickname):
+		WriteError(w, r, http.StatusBadRequest, "invalid_nickname", err.Error())
 	case errors.Is(err, auth.ErrInvalidInput):
 		WriteError(w, r, http.StatusBadRequest, "invalid_input", err.Error())
 	default:

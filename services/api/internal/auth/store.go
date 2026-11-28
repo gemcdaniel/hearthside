@@ -65,15 +65,16 @@ type User struct {
 
 // Profile represents a household player profile; UserID is nil for child profiles.
 type Profile struct {
-	ID          string  `json:"id"`
-	HouseholdID string  `json:"householdId"`
-	UserID      *string `json:"userId"`
-	Name        string  `json:"name"`
-	AvatarID    string  `json:"avatarId"`
-	AccentColor string  `json:"accentColor"`
-	IsChild     bool    `json:"isChild"`
-	CreatedAt   string  `json:"createdAt"`
-	UpdatedAt   string  `json:"updatedAt"`
+	ID             string  `json:"id"`
+	HouseholdID    string  `json:"householdId"`
+	UserID         *string `json:"userId"`
+	Name           string  `json:"name"`
+	AvatarID       string  `json:"avatarId"`
+	AccentColor    string  `json:"accentColor"`
+	IsChild        bool    `json:"isChild"`
+	FriendsVisible bool    `json:"friendsVisible"`
+	CreatedAt      string  `json:"createdAt"`
+	UpdatedAt      string  `json:"updatedAt"`
 }
 
 // Invite represents invite metadata returned to household members (never raw tokens).
@@ -144,9 +145,10 @@ type CreateProfileInput struct {
 
 // UpdateProfileInput supplies mutable attributes when updating a household profile.
 type UpdateProfileInput struct {
-	Name        *string
-	AvatarID    *string
-	AccentColor *string
+	Name           *string
+	AvatarID       *string
+	AccentColor    *string
+	FriendsVisible *bool
 }
 
 // OIDCFlow represents a single-use server-side OIDC PKCE state entry.
@@ -191,7 +193,7 @@ func (s *Store) BootstrapWithPassword(ctx context.Context, input BootstrapInput,
 	if err != nil {
 		return nil, err
 	}
-	displayName, err := validateRequiredName("displayName", input.DisplayName)
+	displayName, err := ValidateNickname(input.DisplayName)
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +259,7 @@ func (s *Store) RegisterWithInvitePassword(ctx context.Context, input RegisterIn
 	if rawToken == "" {
 		return nil, ErrInvalidInvite
 	}
-	displayName, err := validateRequiredName("displayName", input.DisplayName)
+	displayName, err := ValidateNickname(input.DisplayName)
 	if err != nil {
 		return nil, err
 	}
@@ -604,7 +606,7 @@ func (s *Store) ListProfiles(ctx context.Context, householdID string) ([]Profile
 
 // CreateChildProfile creates a login-free child profile inside householdID.
 func (s *Store) CreateChildProfile(ctx context.Context, householdID string, input CreateProfileInput) (*Profile, error) {
-	name, err := validateRequiredName("name", input.Name)
+	name, err := ValidateNickname(input.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -612,20 +614,21 @@ func (s *Store) CreateChildProfile(ctx context.Context, householdID string, inpu
 
 	nowStr := FormatTime(s.now())
 	profile := Profile{
-		ID:          NewID(),
-		HouseholdID: householdID,
-		UserID:      nil,
-		Name:        name,
-		AvatarID:    avatarID,
-		AccentColor: accentColor,
-		IsChild:     true,
-		CreatedAt:   nowStr,
-		UpdatedAt:   nowStr,
+		ID:             NewID(),
+		HouseholdID:    householdID,
+		UserID:         nil,
+		Name:           name,
+		AvatarID:       avatarID,
+		AccentColor:    accentColor,
+		IsChild:        true,
+		FriendsVisible: false,
+		CreatedAt:      nowStr,
+		UpdatedAt:      nowStr,
 	}
 
 	if _, err := s.db.ExecContext(ctx, `
-		INSERT INTO profiles (id, household_id, user_id, name, avatar_id, accent_color, is_child, created_at, updated_at)
-		VALUES (?, ?, NULL, ?, ?, ?, 1, ?, ?)
+		INSERT INTO profiles (id, household_id, user_id, name, avatar_id, accent_color, is_child, friends_visible, created_at, updated_at)
+		VALUES (?, ?, NULL, ?, ?, ?, 1, 0, ?, ?)
 	`, profile.ID, profile.HouseholdID, profile.Name, profile.AvatarID, profile.AccentColor, profile.CreatedAt, profile.UpdatedAt); err != nil {
 		return nil, fmt.Errorf("insert child profile: %w", err)
 	}
@@ -633,10 +636,10 @@ func (s *Store) CreateChildProfile(ctx context.Context, householdID string, inpu
 	return &profile, nil
 }
 
-// UpdateProfile updates name/avatar/accentColor for a child profile in actor's household or actor's own profile.
+// UpdateProfile updates name/avatar/accentColor/friendsVisible for a child profile in actor's household or actor's own profile.
 func (s *Store) UpdateProfile(ctx context.Context, actor SessionContext, profileID string, input UpdateProfileInput) (*Profile, error) {
 	existing, err := scanSingleProfile(ctx, s.db, `
-		SELECT id, household_id, user_id, name, avatar_id, accent_color, is_child, created_at, updated_at
+		SELECT id, household_id, user_id, name, avatar_id, accent_color, is_child, friends_visible, created_at, updated_at
 		FROM profiles
 		WHERE id = ? AND household_id = ?
 	`, profileID, actor.Household.ID)
@@ -652,9 +655,10 @@ func (s *Store) UpdateProfile(ctx context.Context, actor SessionContext, profile
 	name := existing.Name
 	avatarID := existing.AvatarID
 	accentColor := existing.AccentColor
+	friendsVisible := existing.FriendsVisible
 
 	if input.Name != nil {
-		validated, valErr := validateRequiredName("name", *input.Name)
+		validated, valErr := ValidateNickname(*input.Name)
 		if valErr != nil {
 			return nil, valErr
 		}
@@ -674,19 +678,28 @@ func (s *Store) UpdateProfile(ctx context.Context, actor SessionContext, profile
 		}
 		accentColor = trimmed
 	}
+	if input.FriendsVisible != nil {
+		friendsVisible = *input.FriendsVisible
+	}
+
+	friendsVisibleInt := 0
+	if friendsVisible {
+		friendsVisibleInt = 1
+	}
 
 	updatedAt := FormatTime(s.now())
 	if _, err := s.db.ExecContext(ctx, `
 		UPDATE profiles
-		SET name = ?, avatar_id = ?, accent_color = ?, updated_at = ?
+		SET name = ?, avatar_id = ?, accent_color = ?, friends_visible = ?, updated_at = ?
 		WHERE id = ? AND household_id = ?
-	`, name, avatarID, accentColor, updatedAt, profileID, actor.Household.ID); err != nil {
+	`, name, avatarID, accentColor, friendsVisibleInt, updatedAt, profileID, actor.Household.ID); err != nil {
 		return nil, fmt.Errorf("update profile: %w", err)
 	}
 
 	existing.Name = name
 	existing.AvatarID = avatarID
 	existing.AccentColor = accentColor
+	existing.FriendsVisible = friendsVisible
 	existing.UpdatedAt = updatedAt
 	return existing, nil
 }
@@ -694,7 +707,7 @@ func (s *Store) UpdateProfile(ctx context.Context, actor SessionContext, profile
 // DeleteChildProfile removes a child profile belonging to actor's household (rejecting adult/owner profiles).
 func (s *Store) DeleteChildProfile(ctx context.Context, actor SessionContext, profileID string) error {
 	existing, err := scanSingleProfile(ctx, s.db, `
-		SELECT id, household_id, user_id, name, avatar_id, accent_color, is_child, created_at, updated_at
+		SELECT id, household_id, user_id, name, avatar_id, accent_color, is_child, friends_visible, created_at, updated_at
 		FROM profiles
 		WHERE id = ? AND household_id = ?
 	`, profileID, actor.Household.ID)
@@ -866,8 +879,8 @@ func (s *Store) CompleteOIDCAuth(ctx context.Context, flow OIDCFlow, claims OIDC
 	if emailErr != nil {
 		return nil, emailErr
 	}
-	displayName := strings.TrimSpace(claims.DisplayName)
-	if displayName == "" || utf8.RuneCountInString(displayName) > maxNameLength {
+	displayName, nameErr := ValidateNickname(claims.DisplayName)
+	if nameErr != nil {
 		displayName = "Household Member"
 	}
 
@@ -1124,8 +1137,8 @@ func insertUserAndProfileTx(
 	}
 
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO profiles (id, household_id, user_id, name, avatar_id, accent_color, is_child, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)
+		INSERT INTO profiles (id, household_id, user_id, name, avatar_id, accent_color, is_child, friends_visible, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, 0, 1, ?, ?)
 	`, NewID(), user.HouseholdID, user.ID, user.DisplayName, avatarID, accentColor, user.CreatedAt, user.CreatedAt); err != nil {
 		return fmt.Errorf("insert adult profile: %w", err)
 	}
@@ -1172,7 +1185,7 @@ func listProfilesTx(ctx context.Context, tx *sql.Tx, householdID string) ([]Prof
 
 func listProfilesQuery(ctx context.Context, q rowQuerier, householdID string) ([]Profile, error) {
 	rows, err := q.QueryContext(ctx, `
-		SELECT id, household_id, user_id, name, avatar_id, accent_color, is_child, created_at, updated_at
+		SELECT id, household_id, user_id, name, avatar_id, accent_color, is_child, friends_visible, created_at, updated_at
 		FROM profiles
 		WHERE household_id = ?
 		ORDER BY is_child ASC, created_at ASC, id ASC
@@ -1188,9 +1201,9 @@ func listProfilesQuery(ctx context.Context, q rowQuerier, householdID string) ([
 	for rows.Next() {
 		var p Profile
 		var userID sql.NullString
-		var isChildInt int
+		var isChildInt, friendsVisibleInt int
 		if err := rows.Scan(
-			&p.ID, &p.HouseholdID, &userID, &p.Name, &p.AvatarID, &p.AccentColor, &isChildInt, &p.CreatedAt, &p.UpdatedAt,
+			&p.ID, &p.HouseholdID, &userID, &p.Name, &p.AvatarID, &p.AccentColor, &isChildInt, &friendsVisibleInt, &p.CreatedAt, &p.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan profile: %w", err)
 		}
@@ -1199,6 +1212,7 @@ func listProfilesQuery(ctx context.Context, q rowQuerier, householdID string) ([
 			p.UserID = &uid
 		}
 		p.IsChild = isChildInt == 1
+		p.FriendsVisible = friendsVisibleInt == 1
 		profiles = append(profiles, p)
 	}
 	if err := rows.Err(); err != nil {
@@ -1210,10 +1224,10 @@ func listProfilesQuery(ctx context.Context, q rowQuerier, householdID string) ([
 func scanSingleProfile(ctx context.Context, q rowQuerier, query string, args ...any) (*Profile, error) {
 	var p Profile
 	var userID sql.NullString
-	var isChildInt int
+	var isChildInt, friendsVisibleInt int
 
 	err := q.QueryRowContext(ctx, query, args...).Scan(
-		&p.ID, &p.HouseholdID, &userID, &p.Name, &p.AvatarID, &p.AccentColor, &isChildInt, &p.CreatedAt, &p.UpdatedAt,
+		&p.ID, &p.HouseholdID, &userID, &p.Name, &p.AvatarID, &p.AccentColor, &isChildInt, &friendsVisibleInt, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1226,6 +1240,7 @@ func scanSingleProfile(ctx context.Context, q rowQuerier, query string, args ...
 		p.UserID = &uid
 	}
 	p.IsChild = isChildInt == 1
+	p.FriendsVisible = friendsVisibleInt == 1
 	return &p, nil
 }
 

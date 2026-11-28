@@ -17,6 +17,7 @@ import (
 	"github.com/gemcdaniel/hearthside/services/api/internal/config"
 	"github.com/gemcdaniel/hearthside/services/api/internal/db"
 	"github.com/gemcdaniel/hearthside/services/api/internal/httpapi"
+	"github.com/gemcdaniel/hearthside/services/api/internal/leaderboards"
 	"github.com/gemcdaniel/hearthside/services/api/internal/puzzles"
 	cloudsync "github.com/gemcdaniel/hearthside/services/api/internal/sync"
 )
@@ -73,10 +74,11 @@ func run(ctx context.Context) error {
 	defer puzzleSvc.Wait()
 
 	syncSvc := cloudsync.NewService(database, nil)
+	leaderboardSvc := leaderboards.NewService(database, puzzleSvc, nil)
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           httpapi.NewHandler(httpapi.Dependencies{DB: database, Logger: logger, Config: cfg, Puzzles: puzzleSvc, Sync: syncSvc}),
+		Handler:           httpapi.NewHandler(httpapi.Dependencies{DB: database, Logger: logger, Config: cfg, Puzzles: puzzleSvc, Sync: syncSvc, Leaderboards: leaderboardSvc}),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      30 * time.Second,

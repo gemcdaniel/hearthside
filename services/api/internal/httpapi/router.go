@@ -11,6 +11,7 @@ import (
 	"github.com/gemcdaniel/hearthside/engine/sudoku"
 	"github.com/gemcdaniel/hearthside/services/api/internal/auth"
 	"github.com/gemcdaniel/hearthside/services/api/internal/config"
+	"github.com/gemcdaniel/hearthside/services/api/internal/leaderboards"
 	"github.com/gemcdaniel/hearthside/services/api/internal/puzzles"
 	cloudsync "github.com/gemcdaniel/hearthside/services/api/internal/sync"
 )
@@ -24,6 +25,7 @@ type Dependencies struct {
 	Config         config.Config
 	Puzzles        *puzzles.Service
 	Sync           *cloudsync.Service
+	Leaderboards   *leaderboards.Service
 	OIDCHTTPClient *http.Client
 	Now            func() time.Time
 }
@@ -50,6 +52,7 @@ func NewHandler(deps Dependencies) http.Handler {
 	var store *auth.Store
 	puzzleSvc := deps.Puzzles
 	syncSvc := deps.Sync
+	lbSvc := deps.Leaderboards
 	if deps.DB != nil {
 		store = auth.NewStore(deps.DB, deps.Now)
 		if puzzleSvc == nil {
@@ -57,6 +60,9 @@ func NewHandler(deps Dependencies) http.Handler {
 		}
 		if syncSvc == nil {
 			syncSvc = cloudsync.NewService(deps.DB, deps.Now)
+		}
+		if lbSvc == nil {
+			lbSvc = leaderboards.NewService(deps.DB, puzzleSvc, deps.Now)
 		}
 	}
 	oidcClient := auth.NewOIDCClient(cfg.OIDC, cfg.PublicBaseURL, deps.OIDCHTTPClient)
@@ -93,6 +99,12 @@ func NewHandler(deps Dependencies) http.Handler {
 	mux.Handle("PUT /api/v1/sync/profiles/{profileId}/saves/{gameId}/{slot}", requireAuth(store, upsertSaveHandler(syncSvc, logger)))
 	mux.Handle("POST /api/v1/sync/profiles/{profileId}/records/batch", requireAuth(store, upsertRecordsBatchHandler(syncSvc, logger)))
 	mux.Handle("PUT /api/v1/sync/profiles/{profileId}/preferences", requireAuth(store, upsertPreferencesHandler(syncSvc, logger)))
+
+	// Authenticated leaderboard routes (Phase 6).
+	mux.Handle("POST /api/v1/leaderboards/submissions", requireAuth(store, submitLeaderboardResultHandler(lbSvc, logger)))
+	mux.Handle("GET /api/v1/leaderboards/daily", requireAuth(store, dailyLeaderboardHandler(lbSvc, logger)))
+	mux.Handle("GET /api/v1/leaderboards/puzzles/{puzzleId}", requireAuth(store, puzzleLeaderboardHandler(lbSvc, logger)))
+	mux.Handle("GET /api/v1/leaderboards/household/daily-summary", requireAuth(store, householdDailySummaryHandler(lbSvc, logger)))
 
 	// Strict /api boundary so unmatched API paths never fall through to SPA index.html.
 	mux.HandleFunc("/api", apiNotFoundHandler)

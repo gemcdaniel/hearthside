@@ -143,9 +143,10 @@ func createProfileHandler(store *auth.Store, logger *slog.Logger) http.HandlerFu
 }
 
 type updateProfileRequest struct {
-	Name        *string `json:"name"`
-	AvatarID    *string `json:"avatarId"`
-	AccentColor *string `json:"accentColor"`
+	Name           *string `json:"name"`
+	AvatarID       *string `json:"avatarId"`
+	AccentColor    *string `json:"accentColor"`
+	FriendsVisible *bool   `json:"friendsVisible"`
 }
 
 func updateProfileHandler(store *auth.Store, logger *slog.Logger) http.HandlerFunc {
@@ -163,9 +164,10 @@ func updateProfileHandler(store *auth.Store, logger *slog.Logger) http.HandlerFu
 
 		profileID := r.PathValue("id")
 		profile, err := store.UpdateProfile(r.Context(), sc, profileID, auth.UpdateProfileInput{
-			Name:        req.Name,
-			AvatarID:    req.AvatarID,
-			AccentColor: req.AccentColor,
+			Name:           req.Name,
+			AvatarID:       req.AvatarID,
+			AccentColor:    req.AccentColor,
+			FriendsVisible: req.FriendsVisible,
 		})
 		if err != nil {
 			writeHouseholdError(w, r, logger, "update profile failed", err)
@@ -204,6 +206,8 @@ func writeHouseholdError(w http.ResponseWriter, r *http.Request, logger *slog.Lo
 		WriteError(w, r, http.StatusForbidden, "forbidden", "action not permitted")
 	case errors.Is(err, auth.ErrConflict):
 		WriteError(w, r, http.StatusConflict, "conflict", "resource cannot be modified in its current state")
+	case errors.Is(err, auth.ErrInvalidNickname):
+		WriteError(w, r, http.StatusBadRequest, "invalid_nickname", err.Error())
 	case errors.Is(err, auth.ErrInvalidInput):
 		WriteError(w, r, http.StatusBadRequest, "invalid_input", err.Error())
 	default:

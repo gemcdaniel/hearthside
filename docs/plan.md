@@ -1,8 +1,8 @@
-# Hearthside: Project Plan v1.4 (Phase 5 Complete)
+# Hearthside: Project Plan v1.5 (Phase 6, Run 1 Complete)
 
-Version 1.4, November 27, 2026. Status legend: **Confirmed** means locked by the project owner; **Proposed** means recommended default awaiting confirmation if changes are needed; **Open** means unresolved.
+Version 1.5, November 28, 2026. Status legend: **Confirmed** means locked by the project owner; **Proposed** means recommended default awaiting confirmation if changes are needed; **Open** means unresolved.
 
-Version 1.4 completes **Phase 5 (Cloud save and stats sync)** atop the Phase 4 home-server foundation and `v1.0.0` offline-first PWA: SQLite sync storage (`0004_cloud_sync.sql`), household-scoped Go sync API with optimistic revisions and D30 completion auto-resolution, pure TypeScript D30–D32 merge & stats recomputation engine, IndexedDB v4 durable offline sync queue (D33) & first-link backfill (D34), Resolve Sync Conflict modal UX, live cross-device resume reactivity, and two-device Playwright E2E verification.
+Version 1.5 adds **Phase 6, Run 1 (Authoritative leaderboard backend & child-safe guardrails)** atop the Phase 5 cloud save/stats sync foundation: SQLite `0005_leaderboards.sql` (`leaderboard_entries` and profile `friends_visible`), pure-Go starter-bank lookup helpers in `engine/sudoku`, strict nickname guardrails (`ValidateNickname`), authoritative solution & bounds validation (`services/api/internal/leaderboards`), household & friends leaderboard endpoints + Today's Family Daily summary, and ADRs D35–D39.
 
 ## 1. Vision and scope
 
@@ -136,6 +136,16 @@ D1 to D34 are confirmed unless noted as Proposed.
 **D33. Durable offline sync queue and triggers (confirmed).** IndexedDB tracks dirty save slots, unsynced puzzle records, and dirty preferences durably and flushes quietly on app startup, profile switch, reconnect (`online`), debounced moves, pause, completion, `visibilitychange` (`keepalive`), and manual **Sync Now**.
 
 **D34. First-link backfill (confirmed).** Linking an existing local profile to a household profile backfills its local completion history and active saves through the D30–D32 merge pipeline rather than discarding prior offline progress or silently overwriting remote saves.
+
+**D35. Authoritative server leaderboard validation (confirmed).** Leaderboard submissions include `puzzleId`, an 81-character `solutionGrid`, `elapsedMs`, and `hintsUsed`. The Go API resolves `puzzleId` against authoritative server puzzles (SQLite `puzzles`, canonical Daily via `engine/sudoku.DailySeed`, or the deterministic starter-bank schedule via `engine/sudoku`), verifies `solutionGrid` matches cell-for-cell, enforces sane bounds (`1000 <= elapsedMs <= 86_400_000`, `hintsUsed >= 0`), clamps future `completedAt` timestamps, and locks the first verified completion per `(profileId, gameId, puzzleId)`.
+
+**D36. Family-friendly leaderboard ranking (confirmed).** Entries rank by `elapsedMs ASC`, then `hintsUsed ASC`, then `completedAt ASC` (with `submittedAt ASC` tie-breaker), paired with an optional `noHintsOnly=true` filter (`hints_used = 0`).
+
+**D37. Household vs. Friends visibility scopes (confirmed).** Leaderboards support two visibility scopes: `household` (default, including all adult and child profiles in the caller's household plus a Today's Family Daily summary across Easy, Medium, and Hard) and `friends` (invited households on the private server gated by per-profile `friendsVisible`, defaulting `true` for adults and `false` for child profiles). Leaderboard responses project only display nickname, avatar, accent, child flag, household name, and solve metrics—never emails or user IDs.
+
+**D38. Child-appropriate nicknames and zero free-text sharing (confirmed).** Enforce clean profile nicknames (`1–24` Unicode runes composed only of trimmed Unicode letters, digits, spaces, hyphens `-`, and apostrophes `'`, collapsing whitespace runs and rejecting control characters, HTML/angle brackets, and URL/domain patterns), paired with an optional preset kid-friendly nickname picker in the UI and zero comments or free-text sharing anywhere.
+
+**D39. Offline-resilient automatic submission (confirmed).** Signed-in/linked profiles queue verified puzzle completions—including `solutionGrid`—in an IndexedDB submission outbox and flush automatically alongside cloud sync triggers (D33) when online.
 
 ## 4. Architecture
 
@@ -274,11 +284,11 @@ Exit met: a game started on a laptop finishes cleanly on a tablet, divergent act
 
 ### Phase 6: Leaderboards and family features
 
-1. Per-puzzle and per-day leaderboards visible to the household and invited friends.
-2. Server-side validation of submitted solutions and times.
-3. Profile switching and child-appropriate nicknames, with no free-text sharing.
+1. Run 1 (Completed): SQLite leaderboard schema (`0005_leaderboards.sql`), `friendsVisible` opt-in & D38 nickname validation, pure-Go starter-bank lookup helper, `services/api/internal/leaderboards` authoritative solution validation & ranking queries, authenticated leaderboard HTTP endpoints, ADRs D35–D39, and `-race` integration tests.
+2. Run 2: Offline submission outbox & cloud-sync auto-flush (D39), Leaderboard & Today's Family Daily UI (`apps/web`, `packages/ui`, `games/sudoku`), preset nickname picker, and `friendsVisible` toggle in Settings.
+3. Run 3: Multi-household Playwright E2E suite, WCAG 2.1 AA Axe audits across Clean Minimal & Warm Hearthside Light/Dark, and Phase 6 exit sign-off.
 
-Exit: family leaderboard works for the daily puzzle.
+Exit: household daily summary and per-puzzle/daily leaderboards work across devices with authoritative validation, parental child-visibility controls, and zero free-text sharing (Section 17).
 
 ### Phase 7: Hardening and release 2.0
 
@@ -559,6 +569,40 @@ Done when: a puzzle started on one browser context resumes on a second context, 
 - [x] Run 2: Pure merge & stats recomputation engine, IndexedDB v4 durable offline queue (D33), first-link backfill (D34), and lifecycle sync triggers complete.
 - [x] Run 3: Save conflict resolution modal UI (`SyncConflictModal`), cross-device resume UX, Settings sync status card, and two-device Playwright E2E suite passing cleanly.
 
-## 17. Next step
+## 17. Phase 6 in detail (Leaderboards and family features)
 
-Start **Phase 6: Leaderboards and family features** (per-puzzle and daily household leaderboards, server-side solution & solve-time validation, and child-appropriate family views with zero free-text sharing).
+Phase 6 adds family-friendly household and friends leaderboards with authoritative server verification (D35), parental visibility controls (D37), child-safe nicknames with zero free-text sharing (D38), and offline submission queueing (D39).
+
+### 17.1 Run 1: SQLite leaderboard schema, validation, nicknames, and Go API (Completed)
+
+1. Extend SQLite via `services/api/internal/db/migrations/0005_leaderboards.sql` with `profiles.friends_visible` (`1` for adults, `0` for child profiles) and `leaderboard_entries` keyed uniquely by `(profile_id, game_id, puzzle_id)`.
+2. Add pure-Go starter-bank ID parsing and deterministic regeneration in `engine/sudoku/starter_bank.go`.
+3. Implement `ValidateNickname` and `friendsVisible` updates in `services/api/internal/auth` + HTTP error code `invalid_nickname` (`400`) on profile creation/update and bootstrap/register.
+4. Implement `services/api/internal/leaderboards` (authoritative puzzle resolution across SQLite `puzzles`, Daily, and starter bank; exact `solutionGrid` verification returning `422` on mismatch; bounds checks & first-completion locking; D36 ranking & `noHintsOnly`; D37 `household` vs. `friends` zero-PII queries; Today's Family Daily summary) and wire `POST /api/v1/leaderboards/submissions`, `GET /api/v1/leaderboards/daily`, `GET /api/v1/leaderboards/puzzles/{puzzleId}`, and `GET /api/v1/leaderboards/household/daily-summary`.
+
+Done when: all Go `vet`, `-race` unit/HTTP integration tests, `GOOS=js GOARCH=wasm` build checks, and `golangci-lint` pass cleanly across `engine/sudoku` and `services/api`.
+
+### 17.2 Run 2: Offline outbox, Leaderboard & Family Daily UI, nickname picker, and `friendsVisible` toggle
+
+1. Extend `packages/game-core` and `apps/web` IndexedDB outbox with durable offline leaderboard submission queuing (`solutionGrid`, `elapsedMs`, `hintsUsed`, `completedAt`) flushed alongside cloud sync (D39).
+2. Add accessible **Today's Family Daily** summary and **Leaderboards** views (Household / Friends scope tabs, Easy / Medium / Hard / Per-Puzzle switching, `No Hints Only` toggle, zero free-text or email display).
+3. Surface preset child-appropriate nickname suggestions and parental `friendsVisible` toggles cleanly in Settings -> Account & Household.
+
+Done when: offline solves auto-submit on reconnect, UI renders cleanly across themes and viewports with zero hardcoded colors or layout shift, and Vitest unit/component tests pass.
+
+### 17.3 Run 3: Multi-household Playwright E2E, WCAG 2.1 AA audit, and Phase 6 sign-off
+
+1. Add a multi-household Playwright E2E suite verifying household daily summary, cross-household `friends` visibility, child opt-in gating (`friendsVisible`), nickname guardrails, offline win -> reconnect submission, and tampered payload rejection (`422`).
+2. Verify WCAG 2.1 AA compliance (`@axe-core/playwright`) across Clean Minimal & Warm Hearthside Light/Dark views and run the full Go + Web + E2E gate.
+
+Done when: multi-household leaderboard E2E tests pass with zero severe Axe violations and all CI checks pass.
+
+### 17.4 Phase 6 exit checklist (In Progress)
+
+- [x] Run 1: SQLite `0005_leaderboards.sql`, D35–D39 ADRs, nickname validation, `friendsVisible`, starter-bank helper, authoritative leaderboard service, HTTP endpoints, and `-race` tests complete.
+- [ ] Run 2: Offline submission outbox, Leaderboard & Family Daily UI, preset nickname picker, and `friendsVisible` toggle.
+- [ ] Run 3: Multi-household Playwright E2E, WCAG 2.1 AA audit, and Phase 6 exit sign-off.
+
+## 18. Next step
+
+Start **Phase 6, Run 2**: offline leaderboard outbox (`packages/game-core` + `apps/web` IndexedDB), Family Daily summary & Leaderboard views, preset kid-friendly nickname picker, and `friendsVisible` parental visibility controls.

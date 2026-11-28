@@ -47,8 +47,8 @@ func TestOpenPragmasAndMigrateIdempotent(t *testing.T) {
 	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&migrationCount); err != nil {
 		t.Fatalf("count schema_migrations failed: %v", err)
 	}
-	if migrationCount != 4 {
-		t.Fatalf("migrationCount = %d, want 4", migrationCount)
+	if migrationCount != 5 {
+		t.Fatalf("migrationCount = %d, want 5", migrationCount)
 	}
 
 	tables := []string{
@@ -66,6 +66,7 @@ func TestOpenPragmasAndMigrateIdempotent(t *testing.T) {
 		"game_saves",
 		"game_puzzle_records",
 		"profile_preferences",
+		"leaderboard_entries",
 	}
 	for _, table := range tables {
 		var name string
@@ -83,6 +84,14 @@ func TestOpenPragmasAndMigrateIdempotent(t *testing.T) {
 		if nextSeed != 1000000 {
 			t.Fatalf("next_seed(%s) = %d, want 1000000", diff, nextSeed)
 		}
+	}
+
+	var hasFriendsVisible int
+	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('profiles') WHERE name = 'friends_visible'`).Scan(&hasFriendsVisible); err != nil {
+		t.Fatalf("inspect profiles.friends_visible column failed: %v", err)
+	}
+	if hasFriendsVisible != 1 {
+		t.Fatalf("expected profiles.friends_visible column to exist")
 	}
 
 	// Verify foreign key constraint is active on auth tables.
