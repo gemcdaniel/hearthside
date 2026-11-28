@@ -1,4 +1,4 @@
-import type { ShellServices } from '@hearthside/game-core';
+import type { ShellServices, SyncSaveTriggerReason } from '@hearthside/game-core';
 import { useFocusTrap } from '@hearthside/ui';
 import { Suspense, lazy, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { BOARD_SIZE, COL_OF, GRID_SIZE, PEERS, ROW_OF } from '../engine/boardMath';
@@ -28,6 +28,7 @@ import { detectNewlyCompletedUnits } from '../engine/unitCompletion';
 import {
   SUDOKU_STATE_SCHEMA_VERSION,
   deserializeSudokuState,
+  extractSudokuSaveSummary,
   serializeSudokuState,
 } from '../engine/serialization';
 import { getStarterPuzzle, pickNextStarterPuzzle } from '../engine/starterBank';
@@ -197,6 +198,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
   const hintRequestSeqRef = useRef(0);
   const overflowCountRef = useRef(0);
   const lastSelectedCellRef = useRef<number | null>(null);
+  const puzzleStartedAtRef = useRef<string>(new Date().toISOString());
 
   const clearMotionEffects = useCallback(() => {
     const timers = effectTimersRef.current;
@@ -282,7 +284,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
   }, [state.paused]);
 
   const persistSave = useCallback(
-    async (snapshot: SudokuState) => {
+    async (snapshot: SudokuState, reason: SyncSaveTriggerReason = 'move') => {
       if (snapshot.completed) {
         return;
       }
@@ -290,6 +292,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
         mode === 'daily' && dailyDate
           ? `Daily · ${formatDifficultyLabel(difficulty)}`
           : formatDifficultyLabel(difficulty);
+      const summary = extractSudokuSaveSummary(snapshot);
       await servicesRef.current.storage.saveGame<string>({
         schemaVersion: SUDOKU_STATE_SCHEMA_VERSION,
         profileId: servicesRef.current.activeProfile.id,
@@ -297,13 +300,36 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
         slot,
         updatedAt: new Date().toISOString(),
         summary: {
-          elapsedMs: snapshot.elapsedMs,
+          elapsedMs: summary.elapsedMs,
           label: modeLabel,
+          puzzleId: summary.puzzleId,
+          completed: summary.completed,
+          filledCells: summary.filledCells,
         },
         payload: serializeSudokuState(snapshot),
       });
+      void servicesRef.current.sync?.notifyGameSaved(slot, reason);
     },
     [difficulty, mode, dailyDate, slot],
+  );
+
+  const emitPuzzleAttemptStarted = useCallback(
+    (puzzle: PuzzleRecord, puzzleMode: SudokuMode, puzzleDailyDate?: string) => {
+      const startedAt = new Date().toISOString();
+      puzzleStartedAtRef.current = startedAt;
+      void servicesRef.current.sync?.recordPuzzleAttempt({
+        gameId: 'sudoku',
+        puzzleId: puzzle.id,
+        difficulty: puzzle.difficulty,
+        mode: puzzleMode,
+        ...(puzzleDailyDate ? { dailyDate: puzzleDailyDate } : {}),
+        status: 'started',
+        elapsedMs: 0,
+        hintsUsed: 0,
+        startedAt,
+      });
+    },
+    [],
   );
 
   const incrementStartedStats = useCallback(async () => {
@@ -383,6 +409,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
           try {
             const restored = deserializeSudokuState(existingSave.payload);
             if (!restored.completed) {
+              puzzleStartedAtRef.current = existingSave.updatedAt;
               setState(restored);
               setGeneratingPuzzle(false);
               setLoaded(true);
@@ -427,6 +454,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
           setState(createSudokuState(puzzle, { mode: 'daily', dailyDate }));
           setGeneratingPuzzle(false);
           setLoaded(true);
+          emitPuzzleAttemptStarted(puzzle, 'daily', dailyDate);
           void incrementStartedStats();
           return;
         }
@@ -438,6 +466,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
           setState(createSudokuState(bankPuzzle, { mode: 'standard' }));
           setGeneratingPuzzle(false);
           setLoaded(true);
+          emitPuzzleAttemptStarted(bankPuzzle, 'standard');
           void incrementStartedStats();
           return;
         }
@@ -450,6 +479,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
         setState(createSudokuState(overflowPuzzle, { mode: 'standard' }));
         setGeneratingPuzzle(false);
         setLoaded(true);
+        emitPuzzleAttemptStarted(overflowPuzzle, 'standard');
         void incrementStartedStats();
       } catch (err: unknown) {
         if (!active) {
@@ -471,6 +501,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
     dailyDate,
     slot,
     services.storage,
+    emitPuzzleAttemptStarted,
     incrementStartedStats,
     resolveNextStandardPuzzle,
   ]);
@@ -503,7 +534,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
       if (document.hidden && !stateRef.current.completed && !stateRef.current.paused) {
         const pausedState = reduceSudoku(stateRef.current, sudokuActions.setPaused(true));
         setState(pausedState);
-        void persistSave(pausedState);
+        void persistSave(pausedState, 'visibility');
       }
     }
 
@@ -562,6 +593,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
       }
 
       try {
+        const completedAt = new Date().toISOString();
         await servicesRef.current.storage.recordCompletedPuzzle({
           profileId: servicesRef.current.activeProfile.id,
           gameId: 'sudoku',
@@ -569,11 +601,24 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
           difficulty: snapshot.puzzle.difficulty,
           mode: snapshot.mode,
           dailyDate: snapshot.dailyDate,
-          completedAt: new Date().toISOString(),
+          completedAt,
           elapsedMs: snapshot.elapsedMs,
           hintsUsed: snapshot.hintsUsed,
         });
+        await servicesRef.current.sync?.recordPuzzleAttempt({
+          gameId: 'sudoku',
+          puzzleId: snapshot.puzzle.id,
+          difficulty: snapshot.puzzle.difficulty,
+          mode: snapshot.mode,
+          ...(snapshot.dailyDate ? { dailyDate: snapshot.dailyDate } : {}),
+          status: 'completed',
+          elapsedMs: snapshot.elapsedMs,
+          hintsUsed: snapshot.hintsUsed,
+          startedAt: puzzleStartedAtRef.current,
+          completedAt,
+        });
         await servicesRef.current.storage.deleteSave(slot);
+        await servicesRef.current.sync?.notifyGameSaved(slot, 'complete');
       } catch {
         // Ignore non-fatal storage cleanup errors.
       }
@@ -597,9 +642,9 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
   }, []);
 
   const applyAndSave = useCallback(
-    (next: SudokuState) => {
+    (next: SudokuState, reason: SyncSaveTriggerReason = 'move') => {
       setState(next);
-      void persistSave(next);
+      void persistSave(next, reason);
     },
     [persistSave],
   );
@@ -760,7 +805,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
     }
     servicesRef.current.audio.playSfx('tap');
     const next = reduceSudoku(current, sudokuActions.setPaused(!current.paused));
-    applyAndSave(next);
+    applyAndSave(next, 'pause');
   }, [applyAndSave, generatingPuzzle]);
 
   const handleCheckBoard = useCallback(() => {
@@ -961,12 +1006,14 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
     const fresh = createSudokuState(nextPuzzle, { mode: 'standard' });
     servicesRef.current.audio.playSfx('tap');
     applyAndSave(fresh);
+    emitPuzzleAttemptStarted(nextPuzzle, 'standard');
     void incrementStartedStats();
   }, [
     difficulty,
     applyAndSave,
     clearMotionEffects,
     clearTransientHint,
+    emitPuzzleAttemptStarted,
     incrementStartedStats,
     resolveNextStandardPuzzle,
   ]);
@@ -983,7 +1030,7 @@ export function SudokuGame({ services, initialMode, wasmClient }: SudokuGameProp
   function handleExit() {
     services.audio.playSfx('tap');
     if (!stateRef.current.completed && !generatingPuzzle) {
-      void persistSave(stateRef.current);
+      void persistSave(stateRef.current, 'pause');
     }
     services.onExitToLibrary();
   }

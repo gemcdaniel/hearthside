@@ -5,6 +5,7 @@ import {
   isColorMode,
   isProfileAccentId,
   isThemeId,
+  mergePuzzleRecord,
   type AvatarId,
   type CachedPuzzleEntry,
   type CompletedPuzzleRecord,
@@ -13,14 +14,16 @@ import {
   type Profile,
   type ProfileAccentId,
   type ProfileSettings,
+  type PuzzleRecordLogEntry,
   type SaveEnvelope,
+  type SaveSyncConflict,
 } from '@hearthside/game-core';
 import { getSystemThemeMode } from '@hearthside/ui';
 
 export { getStoragePersistenceStatus, requestStoragePersistence } from '../diagnostics/indexedDb';
 
 export const HEARTHSIDE_DB_NAME = 'hearthside-db';
-export const HEARTHSIDE_DB_VERSION = 3;
+export const HEARTHSIDE_DB_VERSION = 4;
 export const EXPORT_SCHEMA_VERSION = 1;
 export const DEFAULT_PROFILE_ID = 'profile-default-1';
 export const DEFAULT_PROFILE_NAME = 'Player 1';
@@ -34,6 +37,21 @@ const STORE_COMPLETED = 'completedPuzzles';
 const STORE_DAILY_PUZZLES = 'dailyPuzzles';
 const STORE_SERVER_PUZZLE_BANK = 'serverPuzzleBank';
 const STORE_SERVER_SYNC_META = 'serverSyncMeta';
+const STORE_PUZZLE_RECORDS = 'puzzleRecords';
+const STORE_SYNC_CONFLICTS = 'syncConflicts';
+const STORE_PROFILE_SYNC_STATE = 'profileSyncState';
+
+export interface ProfileSyncStateRecord {
+  readonly profileId: string;
+  readonly lastSyncedAt?: string;
+  readonly preferencesDirty: boolean;
+  readonly preferencesUpdatedAt?: string;
+}
+
+interface StoredPuzzleRecordRow extends PuzzleRecordLogEntry {
+  /** Numeric flag (0 | 1) instead of boolean because IndexedDB rejects boolean index keys. */
+  readonly dirty: 0 | 1;
+}
 
 export interface ServerBankPuzzleRecord {
   readonly id: string;
@@ -151,6 +169,23 @@ export function openHearthsideDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORE_SERVER_SYNC_META)) {
         db.createObjectStore(STORE_SERVER_SYNC_META, { keyPath: 'difficulty' });
+      }
+      if (!db.objectStoreNames.contains(STORE_PUZZLE_RECORDS)) {
+        const records = db.createObjectStore(STORE_PUZZLE_RECORDS, {
+          keyPath: ['profileId', 'gameId', 'puzzleId'],
+        });
+        records.createIndex('by_profile', 'profileId', { unique: false });
+        records.createIndex('by_profile_game', ['profileId', 'gameId'], { unique: false });
+        records.createIndex('by_profile_dirty', ['profileId', 'dirty'], { unique: false });
+      }
+      if (!db.objectStoreNames.contains(STORE_SYNC_CONFLICTS)) {
+        const conflicts = db.createObjectStore(STORE_SYNC_CONFLICTS, {
+          keyPath: ['profileId', 'gameId', 'slot'],
+        });
+        conflicts.createIndex('by_profile', 'profileId', { unique: false });
+      }
+      if (!db.objectStoreNames.contains(STORE_PROFILE_SYNC_STATE)) {
+        db.createObjectStore(STORE_PROFILE_SYNC_STATE, { keyPath: 'profileId' });
       }
     };
 
@@ -272,7 +307,58 @@ function isSaveSlotSummary(value: unknown): boolean {
       (typeof value.elapsedMs === 'number' &&
         Number.isFinite(value.elapsedMs) &&
         value.elapsedMs >= 0)) &&
-    (value.label === undefined || typeof value.label === 'string')
+    (value.label === undefined || typeof value.label === 'string') &&
+    (value.puzzleId === undefined || typeof value.puzzleId === 'string') &&
+    (value.completed === undefined || typeof value.completed === 'boolean') &&
+    (value.filledCells === undefined ||
+      (typeof value.filledCells === 'number' &&
+        Number.isFinite(value.filledCells) &&
+        value.filledCells >= 0))
+  );
+}
+
+function isPuzzleRecordRow(value: unknown): value is StoredPuzzleRecordRow {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    isNonEmptyString(value.profileId) &&
+    isNonEmptyString(value.gameId) &&
+    isNonEmptyString(value.puzzleId) &&
+    isNonEmptyString(value.difficulty) &&
+    (value.mode === 'standard' || value.mode === 'daily') &&
+    (value.dailyDate === undefined || typeof value.dailyDate === 'string') &&
+    (value.status === 'started' || value.status === 'completed') &&
+    typeof value.elapsedMs === 'number' &&
+    Number.isFinite(value.elapsedMs) &&
+    value.elapsedMs >= 0 &&
+    typeof value.hintsUsed === 'number' &&
+    Number.isFinite(value.hintsUsed) &&
+    value.hintsUsed >= 0 &&
+    isNonEmptyString(value.startedAt) &&
+    (value.completedAt === undefined || typeof value.completedAt === 'string') &&
+    isNonEmptyString(value.updatedAt) &&
+    (value.dirty === 0 || value.dirty === 1)
+  );
+}
+
+function stripPuzzleRecordDirty(row: StoredPuzzleRecordRow): PuzzleRecordLogEntry {
+  const { dirty: _dirty, ...entry } = row;
+  void _dirty;
+  return entry;
+}
+
+function isSaveSyncConflict(value: unknown): value is SaveSyncConflict {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    isNonEmptyString(value.profileId) &&
+    isNonEmptyString(value.gameId) &&
+    isNonEmptyString(value.slot) &&
+    isSaveEnvelope(value.localSave) &&
+    isRecord(value.serverSave) &&
+    isNonEmptyString(value.detectedAt)
   );
 }
 
@@ -410,9 +496,30 @@ export async function getProfileSettings(profileId: string): Promise<ProfileSett
   return readProfileSettingsFromDb(profileId);
 }
 
+export interface SaveProfileSettingsOptions {
+  readonly markPreferencesDirty?: boolean;
+  readonly preferencesUpdatedAt?: string;
+}
+
+function haveSyncedPreferencesChanged(
+  prev: ProfileSettings | null,
+  next: ProfileSettings,
+): boolean {
+  if (!prev) {
+    return true;
+  }
+  return (
+    prev.theme !== next.theme ||
+    prev.mode !== next.mode ||
+    prev.sudoku.flagDuplicateConflicts !== next.sudoku.flagDuplicateConflicts ||
+    prev.sudoku.flagWrongValues !== next.sudoku.flagWrongValues
+  );
+}
+
 export async function saveProfileSettings(
   profileId: string,
   settings: ProfileSettings,
+  options?: SaveProfileSettingsOptions,
 ): Promise<void> {
   if (!isProfileSettings(settings)) {
     throw new Error('Invalid profile settings payload.');
@@ -427,9 +534,50 @@ export async function saveProfileSettings(
     .then(() => initBarrier.catch(() => {}))
     .then(() =>
       withDb(async (db) => {
-        const tx = db.transaction(STORE_SETTINGS, 'readwrite');
+        const tx = db.transaction(
+          [STORE_SETTINGS, STORE_PROFILES, STORE_PROFILE_SYNC_STATE],
+          'readwrite',
+        );
+        const settingsStore = tx.objectStore(STORE_SETTINGS);
+        const [prevRaw, profileRaw, syncStateRaw] = await Promise.all([
+          requestToPromise(settingsStore.get(profileId), 'Read previous settings.'),
+          requestToPromise(
+            tx.objectStore(STORE_PROFILES).get(profileId),
+            'Read profile for settings sync.',
+          ),
+          requestToPromise(
+            tx.objectStore(STORE_PROFILE_SYNC_STATE).get(profileId),
+            'Read profile sync state.',
+          ),
+        ]);
+
+        const prevSettings = isStoredProfileSettingsRecord(prevRaw) ? prevRaw.settings : null;
+        const syncedChanged = haveSyncedPreferencesChanged(prevSettings, settings);
         const record: StoredProfileSettingsRecord = { profileId, settings };
-        tx.objectStore(STORE_SETTINGS).put(record);
+        settingsStore.put(record);
+
+        const prevSyncState = isRecord(syncStateRaw)
+          ? (syncStateRaw as unknown as ProfileSyncStateRecord)
+          : undefined;
+        const isLinked = isProfile(profileRaw) && Boolean(profileRaw.remoteProfileId);
+        const nowIso = options?.preferencesUpdatedAt ?? new Date().toISOString();
+
+        if (options?.markPreferencesDirty === false) {
+          tx.objectStore(STORE_PROFILE_SYNC_STATE).put({
+            profileId,
+            ...(prevSyncState?.lastSyncedAt ? { lastSyncedAt: prevSyncState.lastSyncedAt } : {}),
+            preferencesDirty: false,
+            preferencesUpdatedAt: options.preferencesUpdatedAt ?? prevSyncState?.preferencesUpdatedAt,
+          } satisfies ProfileSyncStateRecord);
+        } else if (options?.markPreferencesDirty === true || syncedChanged) {
+          tx.objectStore(STORE_PROFILE_SYNC_STATE).put({
+            profileId,
+            ...(prevSyncState?.lastSyncedAt ? { lastSyncedAt: prevSyncState.lastSyncedAt } : {}),
+            preferencesDirty: options?.markPreferencesDirty ?? isLinked,
+            preferencesUpdatedAt: nowIso,
+          } satisfies ProfileSyncStateRecord);
+        }
+
         await transactionDone(tx, 'Save profile settings');
       }),
     )
@@ -492,17 +640,28 @@ export interface RemoteProfileLinkTarget {
 
 /**
  * Links an existing local profile to a remote household profile without deleting
- * or overwriting local saves, settings, stats, or completed puzzles (D29).
+ * local saves, settings, stats, or completed puzzles (D29), and backfills
+ * existing saves, completion records, and preferences into the sync queue (D34).
  */
-export async function linkLocalProfileToRemote(
+export async function linkLocalProfileToHousehold(
   localProfileId: string,
   remote: Pick<RemoteProfileLinkTarget, 'id' | 'householdId' | 'isChild'>,
 ): Promise<Profile> {
+  const nowIso = new Date().toISOString();
   return withDb(async (db) => {
-    const tx = db.transaction(STORE_PROFILES, 'readwrite');
-    const store = tx.objectStore(STORE_PROFILES);
+    const tx = db.transaction(
+      [
+        STORE_PROFILES,
+        STORE_SAVES,
+        STORE_COMPLETED,
+        STORE_PUZZLE_RECORDS,
+        STORE_PROFILE_SYNC_STATE,
+      ],
+      'readwrite',
+    );
+    const profilesStore = tx.objectStore(STORE_PROFILES);
     const existing: unknown = await requestToPromise(
-      store.get(localProfileId),
+      profilesStore.get(localProfileId),
       'Failed to load profile for linking.',
     );
     if (!isProfile(existing)) {
@@ -515,10 +674,101 @@ export async function linkLocalProfileToRemote(
       householdId: remote.householdId,
       isChild: remote.isChild,
     };
-    store.put(updated);
-    await transactionDone(tx, 'Link local profile');
+    profilesStore.put(updated);
+
+    // 1. Mark all existing non-deleted local saves dirty for first-link upload.
+    const savesStore = tx.objectStore(STORE_SAVES);
+    const existingSavesRaw = (await requestToPromise(
+      savesStore.index('by_profile').getAll(localProfileId),
+      'Failed to load saves for first-link backfill.',
+    )) as unknown[];
+    for (const rawSave of existingSavesRaw) {
+      if (!isSaveEnvelope(rawSave) || rawSave.deleted) {
+        continue;
+      }
+      savesStore.put({
+        ...rawSave,
+        baseRevision: rawSave.baseRevision ?? 0,
+        dirty: true,
+        deleted: false,
+        clientUpdatedAt: rawSave.clientUpdatedAt ?? rawSave.updatedAt,
+      } satisfies SaveEnvelope);
+    }
+
+    // 2. Backfill existing completedPuzzles + puzzleRecords as dirty=1 for batch upload.
+    const recordsStore = tx.objectStore(STORE_PUZZLE_RECORDS);
+    const existingRecordsRaw = (await requestToPromise(
+      recordsStore.index('by_profile').getAll(localProfileId),
+      'Failed to load puzzle records for backfill.',
+    )) as unknown[];
+    const recordsByKey = new Map<string, StoredPuzzleRecordRow>();
+    for (const rawRec of existingRecordsRaw) {
+      if (isPuzzleRecordRow(rawRec)) {
+        const key = `${rawRec.gameId}\u0000${rawRec.puzzleId}`;
+        recordsByKey.set(key, { ...rawRec, dirty: 1 });
+      }
+    }
+
+    const completedRaw = (await requestToPromise(
+      tx.objectStore(STORE_COMPLETED).index('by_profile').getAll(localProfileId),
+      'Failed to load completed puzzles for backfill.',
+    )) as unknown[];
+    for (const rawComp of completedRaw) {
+      if (!isCompletedPuzzleRecord(rawComp)) {
+        continue;
+      }
+      const key = `${rawComp.gameId}\u0000${rawComp.puzzleId}`;
+      const backfilledEntry: PuzzleRecordLogEntry = {
+        profileId: localProfileId,
+        gameId: rawComp.gameId,
+        puzzleId: rawComp.puzzleId,
+        difficulty: rawComp.difficulty ?? 'easy',
+        mode: rawComp.mode ?? 'standard',
+        ...(rawComp.dailyDate ? { dailyDate: rawComp.dailyDate } : {}),
+        status: 'completed',
+        elapsedMs: rawComp.elapsedMs,
+        hintsUsed: rawComp.hintsUsed,
+        startedAt: rawComp.completedAt,
+        completedAt: rawComp.completedAt,
+        updatedAt: nowIso,
+      };
+      const existingRec = recordsByKey.get(key);
+      const merged = existingRec
+        ? mergePuzzleRecord(stripPuzzleRecordDirty(existingRec), backfilledEntry)
+        : backfilledEntry;
+      recordsByKey.set(key, { ...merged, dirty: 1 });
+    }
+
+    for (const row of recordsByKey.values()) {
+      recordsStore.put(row);
+    }
+
+    // 3. Mark preferences dirty so theme/gameplay rules backfill via LWW.
+    const syncStateStore = tx.objectStore(STORE_PROFILE_SYNC_STATE);
+    const prevSyncStateRaw: unknown = await requestToPromise(
+      syncStateStore.get(localProfileId),
+      'Failed to load profile sync state.',
+    );
+    const prevSyncState = isRecord(prevSyncStateRaw)
+      ? (prevSyncStateRaw as unknown as ProfileSyncStateRecord)
+      : undefined;
+    syncStateStore.put({
+      profileId: localProfileId,
+      ...(prevSyncState?.lastSyncedAt ? { lastSyncedAt: prevSyncState.lastSyncedAt } : {}),
+      preferencesDirty: true,
+      preferencesUpdatedAt: prevSyncState?.preferencesUpdatedAt ?? nowIso,
+    } satisfies ProfileSyncStateRecord);
+
+    await transactionDone(tx, 'Link local profile with backfill');
     return updated;
   });
+}
+
+export function linkLocalProfileToRemote(
+  localProfileId: string,
+  remote: Pick<RemoteProfileLinkTarget, 'id' | 'householdId' | 'isChild'>,
+): Promise<Profile> {
+  return linkLocalProfileToHousehold(localProfileId, remote);
 }
 
 /**
@@ -635,7 +885,15 @@ export async function updateProfile(
 
 export async function deleteProfile(profileId: string): Promise<void> {
   await withDb(async (db) => {
-    const tx = db.transaction([...ALL_STORES], 'readwrite');
+    const tx = db.transaction(
+      [
+        ...ALL_STORES,
+        STORE_PUZZLE_RECORDS,
+        STORE_SYNC_CONFLICTS,
+        STORE_PROFILE_SYNC_STATE,
+      ],
+      'readwrite',
+    );
     const profilesStore = tx.objectStore(STORE_PROFILES);
     const allProfiles = (await requestToPromise(
       profilesStore.getAll(),
@@ -651,11 +909,14 @@ export async function deleteProfile(profileId: string): Promise<void> {
 
     profilesStore.delete(profileId);
     tx.objectStore(STORE_SETTINGS).delete(profileId);
+    tx.objectStore(STORE_PROFILE_SYNC_STATE).delete(profileId);
 
     const range = IDBKeyRange.only(profileId);
     await deleteIndexMatches(tx.objectStore(STORE_SAVES).index('by_profile'), range);
     await deleteIndexMatches(tx.objectStore(STORE_STATS).index('by_profile'), range);
     await deleteIndexMatches(tx.objectStore(STORE_COMPLETED).index('by_profile'), range);
+    await deleteIndexMatches(tx.objectStore(STORE_PUZZLE_RECORDS).index('by_profile'), range);
+    await deleteIndexMatches(tx.objectStore(STORE_SYNC_CONFLICTS).index('by_profile'), range);
 
     await transactionDone(tx, 'Delete profile');
   });
@@ -725,7 +986,19 @@ export async function ensureInitialized(): Promise<InitializedStorageState> {
   return activeInitPromise;
 }
 
-export async function getSave<TPayload = unknown>(
+function normalizeLoadedSave<TPayload = unknown>(
+  envelope: SaveEnvelope<TPayload>,
+): SaveEnvelope<TPayload> {
+  return {
+    ...envelope,
+    baseRevision: envelope.baseRevision ?? 0,
+    dirty: envelope.dirty ?? false,
+    deleted: envelope.deleted ?? false,
+    clientUpdatedAt: envelope.clientUpdatedAt ?? envelope.updatedAt,
+  };
+}
+
+export async function getRawSave<TPayload = unknown>(
   profileId: string,
   gameId: string,
   slot: string,
@@ -734,24 +1007,121 @@ export async function getSave<TPayload = unknown>(
     const tx = db.transaction(STORE_SAVES, 'readonly');
     const raw: unknown = await requestToPromise(
       tx.objectStore(STORE_SAVES).get([profileId, gameId, slot]),
-      'Failed to read save slot.',
+      'Failed to read raw save slot.',
     );
-    return isSaveEnvelope(raw) ? (raw as SaveEnvelope<TPayload>) : null;
+    return isSaveEnvelope(raw) ? normalizeLoadedSave(raw as SaveEnvelope<TPayload>) : null;
   });
+}
+
+export async function getSave<TPayload = unknown>(
+  profileId: string,
+  gameId: string,
+  slot: string,
+): Promise<SaveEnvelope<TPayload> | null> {
+  const raw = await getRawSave<TPayload>(profileId, gameId, slot);
+  if (!raw || raw.deleted) {
+    return null;
+  }
+  return raw;
 }
 
 export async function putSave<TPayload = unknown>(envelope: SaveEnvelope<TPayload>): Promise<void> {
   await withDb(async (db) => {
-    const tx = db.transaction(STORE_SAVES, 'readwrite');
-    tx.objectStore(STORE_SAVES).put(envelope);
+    const tx = db.transaction([STORE_PROFILES, STORE_SAVES], 'readwrite');
+    const [profileRaw, existingRaw] = await Promise.all([
+      requestToPromise(
+        tx.objectStore(STORE_PROFILES).get(envelope.profileId),
+        'Read profile for putSave.',
+      ),
+      requestToPromise(
+        tx.objectStore(STORE_SAVES).get([envelope.profileId, envelope.gameId, envelope.slot]),
+        'Read existing save for putSave.',
+      ),
+    ]);
+
+    const isLinked = isProfile(profileRaw) && Boolean(profileRaw.remoteProfileId);
+    const existing = isSaveEnvelope(existingRaw) ? existingRaw : null;
+
+    const enriched: SaveEnvelope<TPayload> = {
+      ...envelope,
+      baseRevision: envelope.baseRevision ?? existing?.baseRevision ?? 0,
+      dirty: envelope.dirty ?? (isLinked || existing?.dirty === true),
+      deleted: envelope.deleted ?? false,
+      clientUpdatedAt: envelope.clientUpdatedAt ?? envelope.updatedAt,
+    };
+
+    tx.objectStore(STORE_SAVES).put(enriched);
     await transactionDone(tx, 'Save game');
   });
 }
 
-export async function deleteSave(profileId: string, gameId: string, slot: string): Promise<void> {
+export async function putSyncedSave<TPayload = unknown>(
+  envelope: SaveEnvelope<TPayload>,
+): Promise<void> {
+  await withDb(async (db) => {
+    const tx = db.transaction(STORE_SAVES, 'readwrite');
+    tx.objectStore(STORE_SAVES).put({
+      ...envelope,
+      baseRevision: envelope.baseRevision ?? 0,
+      dirty: envelope.dirty ?? false,
+      deleted: envelope.deleted ?? false,
+      clientUpdatedAt: envelope.clientUpdatedAt ?? envelope.updatedAt,
+    });
+    await transactionDone(tx, 'Store synced save');
+  });
+}
+
+export async function purgeSaveSlot(
+  profileId: string,
+  gameId: string,
+  slot: string,
+): Promise<void> {
   await withDb(async (db) => {
     const tx = db.transaction(STORE_SAVES, 'readwrite');
     tx.objectStore(STORE_SAVES).delete([profileId, gameId, slot]);
+    await transactionDone(tx, 'Purge save slot');
+  });
+}
+
+export async function deleteSave(profileId: string, gameId: string, slot: string): Promise<void> {
+  const nowIso = new Date().toISOString();
+  await withDb(async (db) => {
+    const tx = db.transaction([STORE_PROFILES, STORE_SAVES], 'readwrite');
+    const savesStore = tx.objectStore(STORE_SAVES);
+    const [profileRaw, existingRaw] = await Promise.all([
+      requestToPromise(
+        tx.objectStore(STORE_PROFILES).get(profileId),
+        'Read profile for deleteSave.',
+      ),
+      requestToPromise(savesStore.get([profileId, gameId, slot]), 'Read save for deleteSave.'),
+    ]);
+
+    const isLinked = isProfile(profileRaw) && Boolean(profileRaw.remoteProfileId);
+    if (isLinked && isSaveEnvelope(existingRaw)) {
+      const existing = existingRaw;
+      const tombstone: SaveEnvelope = {
+        schemaVersion: existing.schemaVersion,
+        profileId,
+        gameId,
+        slot,
+        updatedAt: nowIso,
+        clientUpdatedAt: nowIso,
+        baseRevision: existing.baseRevision ?? 0,
+        dirty: true,
+        deleted: true,
+        summary: {
+          puzzleId: existing.summary?.puzzleId ?? '',
+          completed: false,
+          elapsedMs: 0,
+          filledCells: 0,
+        },
+        payload: existing.payload,
+      };
+      savesStore.put(tombstone);
+    } else {
+      savesStore.delete([profileId, gameId, slot]);
+    }
+
     await transactionDone(tx, 'Delete save slot');
   });
 }
@@ -767,7 +1137,21 @@ export async function listSavesForProfileGame(
       index.getAll([profileId, gameId]),
       'Failed to list save slots.',
     )) as unknown[];
-    return raw.filter(isSaveEnvelope);
+    return raw
+      .filter(isSaveEnvelope)
+      .map((s) => normalizeLoadedSave(s))
+      .filter((s) => !s.deleted);
+  });
+}
+
+export async function listAllSavesForProfile(profileId: string): Promise<SaveEnvelope[]> {
+  return withDb(async (db) => {
+    const tx = db.transaction(STORE_SAVES, 'readonly');
+    const raw = (await requestToPromise(
+      tx.objectStore(STORE_SAVES).index('by_profile').getAll(profileId),
+      'Failed to list all profile saves.',
+    )) as unknown[];
+    return raw.filter(isSaveEnvelope).map((s) => normalizeLoadedSave(s));
   });
 }
 
@@ -933,6 +1317,194 @@ export async function countServerBankPuzzles(): Promise<{
   });
 }
 
+export async function upsertPuzzleRecord(
+  record: PuzzleRecordLogEntry,
+  options?: { readonly dirty?: boolean },
+): Promise<PuzzleRecordLogEntry> {
+  return withDb(async (db) => {
+    const tx = db.transaction(
+      [STORE_PROFILES, STORE_PUZZLE_RECORDS, STORE_COMPLETED],
+      'readwrite',
+    );
+    const recordsStore = tx.objectStore(STORE_PUZZLE_RECORDS);
+    const [profileRaw, existingRaw] = await Promise.all([
+      requestToPromise(
+        tx.objectStore(STORE_PROFILES).get(record.profileId),
+        'Read profile for puzzle record.',
+      ),
+      requestToPromise(
+        recordsStore.get([record.profileId, record.gameId, record.puzzleId]),
+        'Read existing puzzle record.',
+      ),
+    ]);
+
+    const existing = isPuzzleRecordRow(existingRaw) ? existingRaw : null;
+    const merged = existing
+      ? mergePuzzleRecord(stripPuzzleRecordDirty(existing), record)
+      : record;
+    const isLinked = isProfile(profileRaw) && Boolean(profileRaw.remoteProfileId);
+    const dirtyBit: 0 | 1 =
+      options?.dirty !== undefined
+        ? options.dirty
+          ? 1
+          : 0
+        : isLinked || existing?.dirty === 1
+          ? 1
+          : 0;
+
+    recordsStore.put({ ...merged, dirty: dirtyBit } satisfies StoredPuzzleRecordRow);
+
+    if (merged.status === 'completed' && merged.completedAt) {
+      const completedEntry: CompletedPuzzleRecord = {
+        profileId: merged.profileId,
+        gameId: merged.gameId,
+        puzzleId: merged.puzzleId,
+        difficulty: merged.difficulty,
+        mode: merged.mode,
+        ...(merged.dailyDate ? { dailyDate: merged.dailyDate } : {}),
+        completedAt: merged.completedAt,
+        elapsedMs: merged.elapsedMs,
+        hintsUsed: merged.hintsUsed,
+      };
+      tx.objectStore(STORE_COMPLETED).put(completedEntry);
+    }
+
+    await transactionDone(tx, 'Upsert puzzle record');
+    return merged;
+  });
+}
+
+export async function listPuzzleRecords(
+  profileId: string,
+  gameId?: string,
+): Promise<PuzzleRecordLogEntry[]> {
+  return withDb(async (db) => {
+    const tx = db.transaction(STORE_PUZZLE_RECORDS, 'readonly');
+    const store = tx.objectStore(STORE_PUZZLE_RECORDS);
+    const raw = (await requestToPromise(
+      gameId
+        ? store.index('by_profile_game').getAll([profileId, gameId])
+        : store.index('by_profile').getAll(profileId),
+      'Failed to list puzzle records.',
+    )) as unknown[];
+    return raw.filter(isPuzzleRecordRow).map(stripPuzzleRecordDirty);
+  });
+}
+
+export async function listDirtyPuzzleRecords(profileId: string): Promise<PuzzleRecordLogEntry[]> {
+  return withDb(async (db) => {
+    const tx = db.transaction(STORE_PUZZLE_RECORDS, 'readonly');
+    const index = tx.objectStore(STORE_PUZZLE_RECORDS).index('by_profile_dirty');
+    const raw = (await requestToPromise(
+      index.getAll(IDBKeyRange.only([profileId, 1])),
+      'Failed to list dirty puzzle records.',
+    )) as unknown[];
+    return raw.filter(isPuzzleRecordRow).map(stripPuzzleRecordDirty);
+  });
+}
+
+export async function markPuzzleRecordsSynced(
+  profileId: string,
+  canonicalRecords: readonly PuzzleRecordLogEntry[],
+): Promise<void> {
+  if (canonicalRecords.length === 0) {
+    return;
+  }
+  await withDb(async (db) => {
+    const tx = db.transaction([STORE_PUZZLE_RECORDS, STORE_COMPLETED], 'readwrite');
+    const recordsStore = tx.objectStore(STORE_PUZZLE_RECORDS);
+    const completedStore = tx.objectStore(STORE_COMPLETED);
+
+    for (const incoming of canonicalRecords) {
+      const normalized: PuzzleRecordLogEntry = {
+        ...incoming,
+        profileId,
+      };
+      const existingRaw: unknown = await requestToPromise(
+        recordsStore.get([profileId, normalized.gameId, normalized.puzzleId]),
+        'Read existing puzzle record during markSynced.',
+      );
+      const existing = isPuzzleRecordRow(existingRaw) ? existingRaw : null;
+      const merged = existing
+        ? mergePuzzleRecord(stripPuzzleRecordDirty(existing), normalized)
+        : normalized;
+
+      recordsStore.put({ ...merged, dirty: 0 } satisfies StoredPuzzleRecordRow);
+
+      if (merged.status === 'completed' && merged.completedAt) {
+        completedStore.put({
+          profileId,
+          gameId: merged.gameId,
+          puzzleId: merged.puzzleId,
+          difficulty: merged.difficulty,
+          mode: merged.mode,
+          ...(merged.dailyDate ? { dailyDate: merged.dailyDate } : {}),
+          completedAt: merged.completedAt,
+          elapsedMs: merged.elapsedMs,
+          hintsUsed: merged.hintsUsed,
+        } satisfies CompletedPuzzleRecord);
+      }
+    }
+
+    await transactionDone(tx, 'Mark puzzle records synced');
+  });
+}
+
+export async function listSyncConflicts(profileId: string): Promise<SaveSyncConflict[]> {
+  return withDb(async (db) => {
+    const tx = db.transaction(STORE_SYNC_CONFLICTS, 'readonly');
+    const raw = (await requestToPromise(
+      tx.objectStore(STORE_SYNC_CONFLICTS).index('by_profile').getAll(profileId),
+      'Failed to list sync conflicts.',
+    )) as unknown[];
+    return raw.filter(isSaveSyncConflict);
+  });
+}
+
+export async function putSyncConflict(conflict: SaveSyncConflict): Promise<void> {
+  await withDb(async (db) => {
+    const tx = db.transaction(STORE_SYNC_CONFLICTS, 'readwrite');
+    tx.objectStore(STORE_SYNC_CONFLICTS).put(conflict);
+    await transactionDone(tx, 'Store sync conflict');
+  });
+}
+
+export async function deleteSyncConflict(
+  profileId: string,
+  gameId: string,
+  slot: string,
+): Promise<void> {
+  await withDb(async (db) => {
+    const tx = db.transaction(STORE_SYNC_CONFLICTS, 'readwrite');
+    tx.objectStore(STORE_SYNC_CONFLICTS).delete([profileId, gameId, slot]);
+    await transactionDone(tx, 'Delete sync conflict');
+  });
+}
+
+export async function getProfileSyncState(
+  profileId: string,
+): Promise<ProfileSyncStateRecord | null> {
+  return withDb(async (db) => {
+    const tx = db.transaction(STORE_PROFILE_SYNC_STATE, 'readonly');
+    const raw: unknown = await requestToPromise(
+      tx.objectStore(STORE_PROFILE_SYNC_STATE).get(profileId),
+      'Failed to read profile sync state.',
+    );
+    if (isRecord(raw) && isNonEmptyString(raw.profileId) && typeof raw.preferencesDirty === 'boolean') {
+      return raw as unknown as ProfileSyncStateRecord;
+    }
+    return null;
+  });
+}
+
+export async function putProfileSyncState(state: ProfileSyncStateRecord): Promise<void> {
+  await withDb(async (db) => {
+    const tx = db.transaction(STORE_PROFILE_SYNC_STATE, 'readwrite');
+    tx.objectStore(STORE_PROFILE_SYNC_STATE).put(state);
+    await transactionDone(tx, 'Save profile sync state');
+  });
+}
+
 export function createGameStorageService(profileId: string, gameId: string): GameStorageService {
   return {
     loadSave: <TPayload = unknown>(slot: string) => getSave<TPayload>(profileId, gameId, slot),
@@ -979,7 +1551,7 @@ export async function exportAllData(): Promise<string> {
     return {
       profiles: (profilesRaw as unknown[]).filter(isProfile),
       settings: (settingsRaw as unknown[]).filter(isStoredProfileSettingsRecord),
-      saves: (savesRaw as unknown[]).filter(isSaveEnvelope),
+      saves: (savesRaw as unknown[]).filter(isSaveEnvelope).filter((s) => !s.deleted),
       stats: (statsRaw as unknown[]).filter(isGameStatsRecord),
       completedPuzzles: (completedRaw as unknown[]).filter(isCompletedPuzzleRecord),
     };

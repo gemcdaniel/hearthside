@@ -1,6 +1,7 @@
 import type { AudioService } from './audio';
 import type { Profile, ProfileSettings } from './profile';
 import type { GameStorageService, PuzzleSyncService, SaveSlotSummary } from './storage';
+import type { CloudSyncService, PuzzleRecordLogEntry, SaveSummaryMetadata } from './sync';
 
 export type GameCategory = 'puzzle' | 'card' | 'board' | 'arcade';
 
@@ -47,6 +48,11 @@ export interface GamePlugin<
   readonly serializeState: (state: TState) => string;
   readonly deserializeState: (raw: string) => TState;
   readonly extractStats: (state: TState) => TStats;
+  readonly extractSaveSummary: (state: TState) => SaveSummaryMetadata;
+  readonly recomputeStatsFromRecords?: (
+    records: readonly PuzzleRecordLogEntry[],
+    legacyBaseline?: TStats,
+  ) => TStats;
 }
 
 export interface ShellServices {
@@ -55,6 +61,7 @@ export interface ShellServices {
   readonly storage: GameStorageService;
   readonly audio: AudioService;
   readonly puzzleSync?: PuzzleSyncService;
+  readonly sync?: CloudSyncService;
   readonly onExitToLibrary: () => void;
 }
 

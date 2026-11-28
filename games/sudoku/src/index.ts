@@ -37,6 +37,7 @@ export {
   getAverageTimeMs,
   getWinRatePercent,
   normalizeSudokuStats,
+  recomputeSudokuStatsFromRecords,
   recordGameStarted,
   recordGameWon,
   type DifficultyStats,
@@ -93,6 +94,7 @@ export {
 export {
   SUDOKU_STATE_SCHEMA_VERSION,
   deserializeSudokuState,
+  extractSudokuSaveSummary,
   extractSudokuStats,
   serializeSudokuState,
 } from './engine/serialization';

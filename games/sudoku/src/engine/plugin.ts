@@ -4,6 +4,7 @@ import { createSudokuState, reduceSudoku } from './reducer';
 import {
   SUDOKU_STATE_SCHEMA_VERSION,
   deserializeSudokuState,
+  extractSudokuSaveSummary,
   extractSudokuStats,
   serializeSudokuState,
 } from './serialization';
@@ -18,4 +19,5 @@ export const sudokuPlugin: GamePlugin<SudokuState, SudokuEvent, SudokuStatsSnaps
   serializeState: serializeSudokuState,
   deserializeState: deserializeSudokuState,
   extractStats: extractSudokuStats,
+  extractSaveSummary: extractSudokuSaveSummary,
 };

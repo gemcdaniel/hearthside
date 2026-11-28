@@ -7,7 +7,7 @@ import {
   type SaveSlotSummary,
 } from '@hearthside/game-core';
 import { applyThemeToDocument } from '@hearthside/ui';
-import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getAuthProviders, getMe, hasSessionHint, isNavigatorOnline } from './api/client';
 import type { AuthProvidersInfo, AuthSessionPayload, RemoteHouseholdProfile } from './api/types';
 import { attachAudioUnlockListeners, audioService } from './audio/audioService';
@@ -30,7 +30,7 @@ import {
   deleteProfile,
   ensureInitialized,
   getProfileSettings,
-  linkLocalProfileToRemote,
+  linkLocalProfileToHousehold,
   listSavesForProfileGame,
   requestStoragePersistence,
   saveProfileSettings,
@@ -40,6 +40,7 @@ import {
 } from './storage/hearthsideDb';
 import { loadInitialThemePreference, saveThemePreference } from './storage/themeStorage';
 import { prefetchDailyAndBank } from './sync/puzzleSync';
+import { SyncManager } from './sync/syncManager';
 
 interface ActiveGameLaunch {
   readonly gameId: string;
@@ -85,6 +86,8 @@ export function App() {
   const [cachedBankCount, setCachedBankCount] = useState(0);
   const initPromiseRef = useRef<Promise<void> | null>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const activeProfileIdRef = useRef<string>(activeProfile.id);
+  activeProfileIdRef.current = activeProfile.id;
 
   const games = shellGameRegistry.listMetadata();
   const activeGameName =
@@ -115,6 +118,43 @@ export function App() {
 
     setSavedSlotsByGame(map);
   }, []);
+
+  const syncManagerRef = useRef<SyncManager | null>(null);
+  if (syncManagerRef.current === null) {
+    syncManagerRef.current = new SyncManager({
+      onRemoteSettingsApplied: (profileId, nextSettings) => {
+        if (activeProfileIdRef.current === profileId) {
+          setSettings(nextSettings);
+          const themePref = { theme: nextSettings.theme, mode: nextSettings.mode };
+          applyThemeToDocument(themePref);
+          void saveThemePreference(themePref);
+          syncAudioFromSettings(nextSettings);
+        }
+      },
+      onRemoteSavesApplied: (profileId) => {
+        if (activeProfileIdRef.current === profileId) {
+          void refreshSavedSlots(profileId);
+          setLibraryRefreshVersion((v) => v + 1);
+        }
+      },
+      onUnauthorized: () => {
+        setSession(null);
+      },
+    });
+  }
+  const syncManager = syncManagerRef.current;
+
+  useEffect(() => {
+    return syncManager.attachWindowListeners();
+  }, [syncManager]);
+
+  useEffect(() => {
+    syncManager.setSessionActive(session !== null);
+  }, [syncManager, session]);
+
+  useEffect(() => {
+    syncManager.setActiveProfileId(activeProfile.id);
+  }, [syncManager, activeProfile.id]);
 
   const applyActiveProfileState = useCallback(
     (nextProfile: Profile, nextSettings: ProfileSettings) => {
@@ -172,13 +212,15 @@ export function App() {
       if (meRes.status === 'ok') {
         setSession(meRes.data);
         const targetId = profileIdOverride ?? activeProfile.id;
+        syncManager.setSessionActive(true);
+        void syncManager.syncNow(targetId);
         await prefetchDailyAndBank(targetId);
         await refreshCachedCounts();
       } else {
         setSession(null);
       }
     },
-    [activeProfile.id, refreshCachedCounts],
+    [activeProfile.id, refreshCachedCounts, syncManager],
   );
 
   useEffect(() => {
@@ -251,6 +293,7 @@ export function App() {
     audioService.playSfx('tap');
     const nextSettings = await getProfileSettings(target.id);
     applyActiveProfileState(target, nextSettings);
+    void syncManager.syncNow(target.id);
   }
 
   async function handleCreateProfile(input: {
@@ -295,12 +338,22 @@ export function App() {
   }
 
   function handleUpdateSettings(next: ProfileSettings) {
+    const prev = settings;
+    const syncedChanged =
+      prev.theme !== next.theme ||
+      prev.mode !== next.mode ||
+      prev.sudoku.flagDuplicateConflicts !== next.sudoku.flagDuplicateConflicts ||
+      prev.sudoku.flagWrongValues !== next.sudoku.flagWrongValues;
     setSettings(next);
     const themePref = { theme: next.theme, mode: next.mode };
     applyThemeToDocument(themePref);
     void saveThemePreference(themePref);
     syncAudioFromSettings(next);
-    void saveProfileSettings(activeProfile.id, next);
+    void saveProfileSettings(activeProfile.id, next).then(() => {
+      if (syncedChanged) {
+        syncManager.notifyPreferencesChanged(activeProfile.id);
+      }
+    });
   }
 
   async function handleDataImported() {
@@ -313,6 +366,8 @@ export function App() {
   async function handleSessionChanged(next: AuthSessionPayload | null) {
     setSession(next);
     if (next) {
+      syncManager.setSessionActive(true);
+      await syncManager.syncNow(activeProfile.id);
       await prefetchDailyAndBank(activeProfile.id);
       await refreshCachedCounts();
       const provRes = await getAuthProviders();
@@ -327,7 +382,7 @@ export function App() {
 
   async function handleLinkLocalProfile(localProfileId: string, remote: RemoteHouseholdProfile) {
     await waitForInit();
-    const updated = await linkLocalProfileToRemote(localProfileId, {
+    const updated = await linkLocalProfileToHousehold(localProfileId, {
       id: remote.id,
       householdId: remote.householdId,
       isChild: remote.isChild,
@@ -336,6 +391,7 @@ export function App() {
     if (activeProfile.id === localProfileId) {
       setActiveProfile(updated);
     }
+    void syncManager.syncNow(localProfileId);
   }
 
   async function handleUnlinkLocalProfile(localProfileId: string) {
@@ -364,12 +420,22 @@ export function App() {
       setProfiles((prev) => [...prev, added.profile]);
     }
     applyActiveProfileState(added.profile, added.settings);
+    void syncManager.syncNow(added.profile.id);
   }
 
   async function handleSyncNow() {
+    await syncManager.syncNow(activeProfile.id);
     await prefetchDailyAndBank(activeProfile.id);
     await refreshCachedCounts();
   }
+
+  const activeGameSyncService = useMemo(
+    () =>
+      activeLaunch
+        ? syncManager.createGameCloudSyncService(activeProfile.id, activeLaunch.gameId)
+        : undefined,
+    [syncManager, activeProfile.id, activeLaunch],
+  );
 
   function handleLaunchGame(gameId: string, modeId?: string) {
     audioService.playSfx('tap');
@@ -411,6 +477,7 @@ export function App() {
             settings={settings}
             audio={audioService}
             isSignedIn={session !== null}
+            syncService={activeGameSyncService}
             onExitToLibrary={handleExitToLibrary}
           />
         ) : (

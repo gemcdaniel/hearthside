@@ -1,4 +1,5 @@
-import { getLocalDateString, isValidDateKey } from './daily';
+import { mergePuzzleRecordLists, type PuzzleRecordLogEntry } from '@hearthside/game-core';
+import { getLocalDateString, isSudokuDifficulty, isValidDateKey } from './daily';
 import type { SudokuDifficulty, SudokuMode } from './types';
 
 export const SUDOKU_STATS_SCHEMA_VERSION = 1;
@@ -6,8 +7,10 @@ export const SUDOKU_STATS_SCHEMA_VERSION = 1;
 export interface DifficultyStats {
   readonly gamesStarted: number;
   readonly gamesWon: number;
+  readonly completedCount?: number;
   readonly totalTimeMs: number;
   readonly bestTimeMs: number | null;
+  readonly averageTimeMs?: number | null;
 }
 
 export interface SudokuProfileStats {
@@ -317,4 +320,115 @@ export function getAverageTimeMs(diffStats: DifficultyStats): number | null {
     return null;
   }
   return Math.round(diffStats.totalTimeMs / diffStats.gamesWon);
+}
+
+/**
+ * Losslessly recomputes aggregate Sudoku profile stats from deduplicated immutable puzzle records
+ * (D31), optionally blending in a v1.0 legacy baseline when older offline solves predate logs.
+ */
+export function recomputeSudokuStatsFromRecords(
+  records: readonly PuzzleRecordLogEntry[],
+  legacyBaseline?: SudokuProfileStats,
+  todayDate = getLocalDateString(),
+): SudokuProfileStats {
+  const deduped = mergePuzzleRecordLists(records, []).filter(
+    (entry): entry is PuzzleRecordLogEntry & { readonly difficulty: SudokuDifficulty } =>
+      entry.gameId === 'sudoku' && isSudokuDifficulty(entry.difficulty),
+  );
+
+  const counts: Record<
+    SudokuDifficulty,
+    { started: number; won: number; totalTimeMs: number; bestTimeMs: number | null }
+  > = {
+    easy: { started: 0, won: 0, totalTimeMs: 0, bestTimeMs: null },
+    medium: { started: 0, won: 0, totalTimeMs: 0, bestTimeMs: null },
+    hard: { started: 0, won: 0, totalTimeMs: 0, bestTimeMs: null },
+  };
+
+  let totalPlayMs = 0;
+  let totalHintsUsed = 0;
+  const dailyDateSet = new Set<string>(legacyBaseline?.dailyCompletedDates ?? []);
+  const dailySolvedKeys: Record<string, number> = {
+    ...(legacyBaseline?.dailySolvedKeys ?? {}),
+  };
+
+  for (const entry of deduped) {
+    const bucket = counts[entry.difficulty];
+    bucket.started += 1;
+
+    if (entry.status === 'completed') {
+      const safeElapsed = Math.max(0, Math.floor(entry.elapsedMs));
+      const safeHints = Math.max(0, Math.floor(entry.hintsUsed));
+      bucket.won += 1;
+      bucket.totalTimeMs += safeElapsed;
+      bucket.bestTimeMs =
+        bucket.bestTimeMs === null ? safeElapsed : Math.min(bucket.bestTimeMs, safeElapsed);
+      totalPlayMs += safeElapsed;
+      totalHintsUsed += safeHints;
+
+      if (entry.mode === 'daily' && entry.dailyDate && isValidDateKey(entry.dailyDate)) {
+        dailyDateSet.add(entry.dailyDate);
+        const dailyKey = `${entry.dailyDate}:${entry.difficulty}`;
+        const prevBest = dailySolvedKeys[dailyKey];
+        dailySolvedKeys[dailyKey] =
+          prevBest !== undefined ? Math.min(prevBest, safeElapsed) : safeElapsed;
+      }
+    }
+  }
+
+  const finalizeDiff = (diff: SudokuDifficulty): DifficultyStats => {
+    const recBucket = counts[diff];
+    const baseBucket = legacyBaseline?.byDifficulty[diff];
+    const useLegacyWins = baseBucket !== undefined && baseBucket.gamesWon > recBucket.won;
+
+    const gamesWon = useLegacyWins ? baseBucket.gamesWon : recBucket.won;
+    const totalTimeMs = useLegacyWins ? baseBucket.totalTimeMs : recBucket.totalTimeMs;
+    const bestTimeMs = useLegacyWins
+      ? baseBucket.bestTimeMs === null
+        ? recBucket.bestTimeMs
+        : recBucket.bestTimeMs === null
+          ? baseBucket.bestTimeMs
+          : Math.min(baseBucket.bestTimeMs, recBucket.bestTimeMs)
+      : recBucket.bestTimeMs;
+    const gamesStarted = Math.max(
+      recBucket.started,
+      gamesWon,
+      baseBucket?.gamesStarted ?? 0,
+    );
+
+    return {
+      gamesStarted,
+      gamesWon,
+      completedCount: gamesWon,
+      totalTimeMs,
+      bestTimeMs,
+      averageTimeMs: gamesWon > 0 ? Math.round(totalTimeMs / gamesWon) : null,
+    };
+  };
+
+  const easy = finalizeDiff('easy');
+  const medium = finalizeDiff('medium');
+  const hard = finalizeDiff('hard');
+
+  const dailyCompletedDates = Array.from(dailyDateSet).filter(isValidDateKey).sort();
+  const streaks = computeDailyStreaks(dailyCompletedDates, todayDate);
+
+  const gamesStarted = Math.max(
+    easy.gamesStarted + medium.gamesStarted + hard.gamesStarted,
+    legacyBaseline?.gamesStarted ?? 0,
+  );
+  const gamesWon = easy.gamesWon + medium.gamesWon + hard.gamesWon;
+
+  return {
+    schemaVersion: SUDOKU_STATS_SCHEMA_VERSION,
+    gamesStarted,
+    gamesWon,
+    totalPlayMs: Math.max(totalPlayMs, easy.totalTimeMs + medium.totalTimeMs + hard.totalTimeMs),
+    totalHintsUsed: Math.max(totalHintsUsed, legacyBaseline?.totalHintsUsed ?? 0),
+    byDifficulty: { easy, medium, hard },
+    dailyCompletedDates,
+    dailySolvedKeys,
+    currentDailyStreak: streaks.current,
+    bestDailyStreak: Math.max(streaks.best, legacyBaseline?.bestDailyStreak ?? 0),
+  };
 }

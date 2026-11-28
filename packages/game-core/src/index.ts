@@ -39,3 +39,22 @@ export type {
   SaveEnvelope,
   SaveSlotSummary,
 } from './storage';
+export {
+  extractSyncedPreferences,
+  mergePreferencesLWW,
+  mergePuzzleRecord,
+  mergePuzzleRecordLists,
+  type CloudSaveRecord,
+  type CloudSyncService,
+  type PuzzleRecordLogEntry,
+  type PuzzleRecordMode,
+  type PuzzleRecordStatus,
+  type SaveSummaryMetadata,
+  type SaveSyncConflict,
+  type SaveSyncMetadata,
+  type SyncSaveTriggerReason,
+  type SyncStatusKind,
+  type SyncStatusState,
+  type SyncedGameplayPreferences,
+  type SyncedProfilePreferences,
+} from './sync';

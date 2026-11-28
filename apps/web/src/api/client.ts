@@ -1,4 +1,9 @@
 import type {
+  CloudSaveRecord,
+  PuzzleRecordLogEntry,
+  SyncedProfilePreferences,
+} from '@hearthside/game-core';
+import type {
   AuthProvidersInfo,
   AuthSessionPayload,
   BankPageResponse,
@@ -6,13 +11,23 @@ import type {
   DailyAllResponse,
   DailySingleResponse,
   InviteMode,
+  PullProfileSyncResponse,
+  PushPreferencesResponse,
+  PushRecordsBatchItem,
+  PushRecordsBatchResponse,
+  PushSaveSlotRequest,
+  PushSaveSlotResult,
   RemoteHouseholdProfile,
   RemoteInvite,
   RemotePuzzleRecord,
+  SavePushResolution,
+  SyncApiClient,
   ApiResult,
 } from './types';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 8000;
+export const MAX_KEEPALIVE_BYTES = 60_000;
+export const MAX_RECORDS_BATCH_SIZE = 500;
 const SESSION_HINT_KEY = 'hearthside:has-session';
 
 export function hasSessionHint(): boolean {
@@ -56,11 +71,19 @@ export function isNavigatorOnline(): boolean {
 }
 
 interface RequestOptions {
-  readonly method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  readonly method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   readonly body?: unknown;
   readonly treat404AsUnavailable?: boolean;
   readonly timeoutMs?: number;
+  readonly keepalive?: boolean;
 }
+
+type RawFetchOutcome =
+  | { readonly kind: 'ok'; readonly payload: unknown }
+  | { readonly kind: 'http_error'; readonly httpStatus: number; readonly payload: unknown }
+  | { readonly kind: 'unauthorized' }
+  | { readonly kind: 'offline' }
+  | { readonly kind: 'unavailable' };
 
 function extractApiError(payload: unknown): { code: string; message: string } | null {
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
@@ -79,9 +102,20 @@ function extractApiError(payload: unknown): { code: string; message: string } | 
   return null;
 }
 
-async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<ApiResult<T>> {
+function canUseKeepalive(bodyStr: string | undefined, keepalive: boolean | undefined): boolean {
+  if (!keepalive) {
+    return false;
+  }
+  if (!bodyStr) {
+    return true;
+  }
+  const byteLength = new TextEncoder().encode(bodyStr).byteLength;
+  return byteLength <= MAX_KEEPALIVE_BYTES;
+}
+
+async function performJsonFetch(path: string, options: RequestOptions = {}): Promise<RawFetchOutcome> {
   if (!isNavigatorOnline()) {
-    return { status: 'offline' };
+    return { kind: 'offline' };
   }
 
   const method = options.method ?? 'GET';
@@ -98,18 +132,21 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
     bodyStr = JSON.stringify(options.body);
   }
 
+  const fetchInit: RequestInit = {
+    method,
+    credentials: 'same-origin',
+    headers,
+    body: bodyStr,
+    signal: controller.signal,
+    ...(canUseKeepalive(bodyStr, options.keepalive) ? { keepalive: true } : {}),
+  };
+
   try {
-    const response = await fetch(path, {
-      method,
-      credentials: 'same-origin',
-      headers,
-      body: bodyStr,
-      signal: controller.signal,
-    });
+    const response = await fetch(path, fetchInit);
 
     if (response.status === 401) {
       clearSessionHint();
-      return { status: 'unauthorized' };
+      return { kind: 'unauthorized' };
     }
 
     if (
@@ -118,39 +155,56 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
       response.status === 504 ||
       (response.status === 404 && options.treat404AsUnavailable)
     ) {
-      return { status: 'unavailable' };
+      return { kind: 'unavailable' };
     }
 
     const contentType = response.headers?.get?.('content-type') ?? '';
     if (!contentType.toLowerCase().includes('application/json')) {
-      return { status: 'unavailable' };
+      return { kind: 'unavailable' };
     }
 
     let parsed: unknown;
     try {
       parsed = (await response.json()) as unknown;
     } catch {
-      return { status: 'unavailable' };
+      return { kind: 'unavailable' };
     }
 
     if (!response.ok) {
-      const apiErr = extractApiError(parsed);
-      return {
-        status: 'error',
-        httpStatus: response.status,
-        code: apiErr?.code ?? 'api_error',
-        message: apiErr?.message ?? `Request failed with status ${response.status}.`,
-      };
+      return { kind: 'http_error', httpStatus: response.status, payload: parsed };
     }
 
-    return { status: 'ok', data: parsed as T };
+    return { kind: 'ok', payload: parsed };
   } catch {
     if (!isNavigatorOnline()) {
-      return { status: 'offline' };
+      return { kind: 'offline' };
     }
-    return { status: 'unavailable' };
+    return { kind: 'unavailable' };
   } finally {
     globalThis.clearTimeout(timer);
+  }
+}
+
+async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<ApiResult<T>> {
+  const outcome = await performJsonFetch(path, options);
+  switch (outcome.kind) {
+    case 'ok':
+      return { status: 'ok', data: outcome.payload as T };
+    case 'http_error': {
+      const apiErr = extractApiError(outcome.payload);
+      return {
+        status: 'error',
+        httpStatus: outcome.httpStatus,
+        code: apiErr?.code ?? 'api_error',
+        message: apiErr?.message ?? `Request failed with status ${outcome.httpStatus}.`,
+      };
+    }
+    case 'unauthorized':
+      return { status: 'unauthorized' };
+    case 'offline':
+      return { status: 'offline' };
+    case 'unavailable':
+      return { status: 'unavailable' };
   }
 }
 
@@ -375,3 +429,126 @@ export async function getPuzzleById(puzzleId: string): Promise<ApiResult<RemoteP
   }
   return { status: 'ok', data: res.data.puzzle };
 }
+
+export function pullProfileSync(
+  remoteProfileId: string,
+  options?: { readonly gameId?: string; readonly since?: string },
+): Promise<ApiResult<PullProfileSyncResponse>> {
+  const params = new URLSearchParams();
+  if (options?.gameId) {
+    params.set('gameId', options.gameId);
+  }
+  if (options?.since) {
+    params.set('since', options.since);
+  }
+  const qs = params.toString();
+  const basePath = `/api/v1/sync/profiles/${encodeURIComponent(remoteProfileId)}`;
+  return requestJson<PullProfileSyncResponse>(qs ? `${basePath}?${qs}` : basePath);
+}
+
+export async function pushSaveSlot<TPayload = unknown>(
+  remoteProfileId: string,
+  gameId: string,
+  slot: string,
+  body: PushSaveSlotRequest<TPayload>,
+  options?: { readonly keepalive?: boolean },
+): Promise<PushSaveSlotResult<TPayload>> {
+  const path = `/api/v1/sync/profiles/${encodeURIComponent(remoteProfileId)}/saves/${encodeURIComponent(gameId)}/${encodeURIComponent(slot)}`;
+  const outcome = await performJsonFetch(path, {
+    method: 'PUT',
+    body,
+    keepalive: options?.keepalive,
+  });
+
+  switch (outcome.kind) {
+    case 'ok': {
+      const rec = outcome.payload as {
+        readonly resolution: SavePushResolution;
+        readonly save: CloudSaveRecord<TPayload>;
+      };
+      return { ok: true, resolution: rec.resolution, save: rec.save };
+    }
+    case 'http_error': {
+      if (outcome.httpStatus === 409 && typeof outcome.payload === 'object' && outcome.payload !== null) {
+        const conflictBody = outcome.payload as { readonly serverSave?: CloudSaveRecord<TPayload> };
+        if (conflictBody.serverSave) {
+          return { ok: false, kind: 'conflict', serverSave: conflictBody.serverSave };
+        }
+      }
+      const apiErr = extractApiError(outcome.payload);
+      if (outcome.httpStatus === 413) {
+        return {
+          ok: false,
+          kind: 'too_large',
+          message: apiErr?.message ?? 'Save payload exceeds server size limit.',
+        };
+      }
+      return {
+        ok: false,
+        kind: 'error',
+        message: apiErr?.message ?? `Save sync failed with status ${outcome.httpStatus}.`,
+      };
+    }
+    case 'unauthorized':
+      return { ok: false, kind: 'unauthorized' };
+    case 'offline':
+    case 'unavailable':
+      return { ok: false, kind: 'offline' };
+  }
+}
+
+export async function pushRecordsBatch(
+  remoteProfileId: string,
+  records: readonly PushRecordsBatchItem[],
+  options?: { readonly keepalive?: boolean },
+): Promise<ApiResult<PushRecordsBatchResponse>> {
+  if (records.length === 0) {
+    return { status: 'ok', data: { appliedCount: 0, records: [] } };
+  }
+
+  const path = `/api/v1/sync/profiles/${encodeURIComponent(remoteProfileId)}/records/batch`;
+  let appliedCount = 0;
+  const merged: PuzzleRecordLogEntry[] = [];
+
+  for (let i = 0; i < records.length; i += MAX_RECORDS_BATCH_SIZE) {
+    const chunk = records.slice(i, i + MAX_RECORDS_BATCH_SIZE);
+    const res = await requestJson<PushRecordsBatchResponse>(path, {
+      method: 'POST',
+      body: { records: chunk },
+      keepalive: options?.keepalive,
+    });
+    if (res.status !== 'ok') {
+      return res;
+    }
+    appliedCount += res.data.appliedCount;
+    merged.push(...res.data.records);
+  }
+
+  return {
+    status: 'ok',
+    data: {
+      appliedCount,
+      records: merged,
+    },
+  };
+}
+
+export function pushPreferences(
+  remoteProfileId: string,
+  prefs: SyncedProfilePreferences,
+  options?: { readonly keepalive?: boolean },
+): Promise<ApiResult<PushPreferencesResponse>> {
+  const path = `/api/v1/sync/profiles/${encodeURIComponent(remoteProfileId)}/preferences`;
+  return requestJson<PushPreferencesResponse>(path, {
+    method: 'PUT',
+    body: prefs,
+    keepalive: options?.keepalive,
+  });
+}
+
+export const defaultSyncApiClient: SyncApiClient = {
+  pullProfileSync,
+  pushSaveSlot,
+  pushRecordsBatch,
+  pushPreferences,
+};

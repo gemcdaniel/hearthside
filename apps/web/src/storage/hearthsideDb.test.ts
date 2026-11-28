@@ -9,16 +9,24 @@ import {
   createGameStorageService,
   createProfile,
   deleteProfile,
+  deleteSave,
   ensureInitialized,
   exportAllData,
   getProfile,
   getProfileSettings,
+  getProfileSyncState,
+  getRawSave,
   getServerSyncMeta,
   importAllData,
+  linkLocalProfileToHousehold,
   linkLocalProfileToRemote,
+  listDirtyPuzzleRecords,
   listProfiles,
+  listPuzzleRecords,
   listServerBankPuzzles,
+  listSyncConflicts,
   putServerBankPuzzles,
+  putSyncConflict,
   resetHearthsideDbForTests,
   saveProfileSettings,
   unlinkLocalProfile,
@@ -329,5 +337,165 @@ describe('hearthsideDb storage layer', () => {
     expect(unlinked.remoteProfileId).toBeUndefined();
     expect((await getProfile(localP.id))?.remoteProfileId).toBeUndefined();
     expect((await storage.loadSave<{ marker: string }>('easy'))?.payload.marker).toBe('intact');
+  });
+
+  it('upgrades v3 to v4 non-destructively, backfills on first link (D34), tombstones linked deletes, and ignores audio-only setting edits', async () => {
+    // Seed a v3 database manually with legacy v1.0 saves, completed puzzles, and settings
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.open(HEARTHSIDE_DB_NAME, 3);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        db.createObjectStore('profiles', { keyPath: 'id' });
+        db.createObjectStore('settings', { keyPath: 'profileId' });
+        const saves = db.createObjectStore('saves', { keyPath: ['profileId', 'gameId', 'slot'] });
+        saves.createIndex('by_profile', 'profileId', { unique: false });
+        saves.createIndex('by_profile_game', ['profileId', 'gameId'], { unique: false });
+        const stats = db.createObjectStore('stats', { keyPath: ['profileId', 'gameId'] });
+        stats.createIndex('by_profile', 'profileId', { unique: false });
+        const completed = db.createObjectStore('completedPuzzles', {
+          keyPath: ['profileId', 'gameId', 'puzzleId'],
+        });
+        completed.createIndex('by_profile', 'profileId', { unique: false });
+        completed.createIndex('by_profile_game', ['profileId', 'gameId'], { unique: false });
+        db.createObjectStore('dailyPuzzles', { keyPath: ['gameId', 'cacheKey'] });
+        const bank = db.createObjectStore('serverPuzzleBank', { keyPath: 'id' });
+        bank.createIndex('by_difficulty', 'difficulty', { unique: false });
+        bank.createIndex('by_difficulty_seq', ['difficulty', 'seq'], { unique: false });
+        bank.createIndex('by_seq', 'seq', { unique: false });
+        db.createObjectStore('serverSyncMeta', { keyPath: 'difficulty' });
+      };
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction(
+          ['profiles', 'settings', 'saves', 'completedPuzzles'],
+          'readwrite',
+        );
+        tx.objectStore('profiles').put({
+          id: 'p-v3',
+          name: 'Offline Player',
+          avatarId: 'star',
+          accentColor: 'teal',
+          createdAt: '2026-11-27T00:00:00.000Z',
+        });
+        tx.objectStore('settings').put({
+          profileId: 'p-v3',
+          settings: createDefaultProfileSettings('dark'),
+        });
+        tx.objectStore('saves').put({
+          schemaVersion: 1,
+          profileId: 'p-v3',
+          gameId: 'sudoku',
+          slot: 'medium',
+          updatedAt: '2026-11-27T09:00:00.000Z',
+          payload: { board: 'v3-save' },
+        });
+        tx.objectStore('completedPuzzles').put({
+          profileId: 'p-v3',
+          gameId: 'sudoku',
+          puzzleId: 'offline-win-1',
+          difficulty: 'easy',
+          mode: 'standard',
+          completedAt: '2026-11-27T08:00:00.000Z',
+          elapsedMs: 55_000,
+          hintsUsed: 1,
+        });
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      };
+      req.onerror = () => reject(req.error);
+    });
+
+    const storage = createGameStorageService('p-v3', 'sudoku');
+    const preLinkSave = await storage.loadSave<{ board: string }>('medium');
+    expect(preLinkSave).toMatchObject({
+      baseRevision: 0,
+      dirty: false,
+      deleted: false,
+      payload: { board: 'v3-save' },
+    });
+
+    // Link local profile -> triggers D34 backfill of saves, completedPuzzles, and preferences
+    await linkLocalProfileToHousehold('p-v3', {
+      id: 'remote-p-v3',
+      householdId: 'hh-1',
+      isChild: false,
+    });
+
+    const backfilledSave = await storage.loadSave<{ board: string }>('medium');
+    expect(backfilledSave?.dirty).toBe(true);
+    expect(backfilledSave?.baseRevision).toBe(0);
+
+    const dirtyRecs = await listDirtyPuzzleRecords('p-v3');
+    expect(dirtyRecs).toHaveLength(1);
+    expect(dirtyRecs[0]).toMatchObject({
+      puzzleId: 'offline-win-1',
+      status: 'completed',
+      elapsedMs: 55_000,
+    });
+    expect(await listPuzzleRecords('p-v3', 'sudoku')).toHaveLength(1);
+
+    const syncStateAfterLink = await getProfileSyncState('p-v3');
+    expect(syncStateAfterLink?.preferencesDirty).toBe(true);
+
+    // Clear preferencesDirty, then change only audio settings -> MUST NOT mark preferencesDirty
+    const currentSettings = await getProfileSettings('p-v3');
+    await saveProfileSettings('p-v3', currentSettings, {
+      markPreferencesDirty: false,
+      preferencesUpdatedAt: '2026-11-27T10:00:00.000Z',
+    });
+    expect((await getProfileSyncState('p-v3'))?.preferencesDirty).toBe(false);
+
+    await saveProfileSettings('p-v3', {
+      ...currentSettings,
+      sfxEnabled: false,
+      sfxVolume: 0.1,
+      musicEnabled: true,
+      musicVolume: 0.2,
+    });
+    expect((await getProfileSyncState('p-v3'))?.preferencesDirty).toBe(false);
+
+    // Changing theme or gameplay rule marks preferencesDirty = true
+    await saveProfileSettings('p-v3', {
+      ...currentSettings,
+      theme: 'warm-hearthside',
+    });
+    expect((await getProfileSyncState('p-v3'))?.preferencesDirty).toBe(true);
+
+    // Linked deleteSave writes a tombstone rather than removing immediately
+    await deleteSave('p-v3', 'sudoku', 'medium');
+    expect(await storage.loadSave('medium')).toBeNull();
+    expect(await getRawSave('p-v3', 'sudoku', 'medium')).toMatchObject({
+      deleted: true,
+      dirty: true,
+      baseRevision: 0,
+    });
+
+    // Unresolved conflicts persist across reads
+    await putSyncConflict({
+      profileId: 'p-v3',
+      gameId: 'sudoku',
+      slot: 'hard',
+      localSave: backfilledSave!,
+      serverSave: {
+        profileId: 'remote-p-v3',
+        gameId: 'sudoku',
+        slot: 'hard',
+        schemaVersion: 1,
+        revision: 2,
+        puzzleId: 'p-srv',
+        completed: false,
+        deleted: false,
+        elapsedMs: 9000,
+        filledCells: 18,
+        payload: '{}',
+        clientUpdatedAt: '2026-11-27T10:00:00Z',
+        updatedAt: '2026-11-27T10:00:01Z',
+      },
+      detectedAt: '2026-11-27T10:01:00Z',
+    });
+    expect(await listSyncConflicts('p-v3')).toHaveLength(1);
   });
 });

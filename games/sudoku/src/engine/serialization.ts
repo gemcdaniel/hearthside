@@ -1,3 +1,4 @@
+import type { SaveSummaryMetadata } from '@hearthside/game-core';
 import { ALL_DIGITS_MASK, BOARD_SIZE } from './boardMath';
 import type {
   CellChange,
@@ -201,5 +202,25 @@ export function extractSudokuStats(state: SudokuState): SudokuStatsSnapshot {
     mode: state.mode,
     hintsUsed: state.hintsUsed,
     completed: state.completed,
+  };
+}
+
+/**
+ * Extracts compact conflict-picker summary metadata for a Sudoku save state.
+ * `filledCells` counts total filled cells on the 81-cell board (0..81, 81 when solved),
+ * including givens and player-entered digits.
+ */
+export function extractSudokuSaveSummary(state: SudokuState): SaveSummaryMetadata {
+  let filledCells = 0;
+  for (const cell of state.cells) {
+    if (cell.value !== 0) {
+      filledCells += 1;
+    }
+  }
+  return {
+    puzzleId: state.puzzle.id,
+    completed: state.completed,
+    elapsedMs: Math.max(0, Math.floor(state.elapsedMs)),
+    filledCells,
   };
 }

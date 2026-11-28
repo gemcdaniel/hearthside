@@ -45,6 +45,12 @@ function makeTestPlugin(
     serializeState: (state) => JSON.stringify(state),
     deserializeState: (raw) => JSON.parse(raw) as CounterState,
     extractStats: (state) => ({ total: state.count }),
+    extractSaveSummary: (state) => ({
+      puzzleId: 'counter-1',
+      completed: state.count > 0,
+      elapsedMs: 0,
+      filledCells: state.count,
+    }),
   };
 }
 

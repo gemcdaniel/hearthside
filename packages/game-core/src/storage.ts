@@ -1,6 +1,9 @@
 export interface SaveSlotSummary {
   readonly elapsedMs?: number;
   readonly label?: string;
+  readonly puzzleId?: string;
+  readonly completed?: boolean;
+  readonly filledCells?: number;
 }
 
 export interface SaveEnvelope<TPayload = unknown> {
@@ -11,6 +14,11 @@ export interface SaveEnvelope<TPayload = unknown> {
   readonly updatedAt: string;
   readonly summary?: SaveSlotSummary;
   readonly payload: TPayload;
+  /** Phase 5 cloud sync metadata (optional on legacy offline v1.0 saves). */
+  readonly baseRevision?: number;
+  readonly dirty?: boolean;
+  readonly deleted?: boolean;
+  readonly clientUpdatedAt?: string;
 }
 
 export interface BaseGameStats {

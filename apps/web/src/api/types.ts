@@ -1,3 +1,9 @@
+import type {
+  CloudSaveRecord,
+  PuzzleRecordLogEntry,
+  SyncedProfilePreferences,
+} from '@hearthside/game-core';
+
 export type ApiResult<T> =
   | { readonly status: 'ok'; readonly data: T }
   | { readonly status: 'unauthorized' }
@@ -102,4 +108,102 @@ export interface BankPageResponse {
   readonly puzzles: readonly RemotePuzzleRecord[];
   readonly nextSeq: number;
   readonly hasMore: boolean;
+}
+
+export interface PullProfileSyncResponse {
+  readonly profileId: string;
+  readonly saves: readonly CloudSaveRecord[];
+  readonly records: readonly PuzzleRecordLogEntry[];
+  readonly preferences:
+    | (SyncedProfilePreferences & {
+        readonly profileId: string;
+        readonly serverUpdatedAt: string;
+      })
+    | null;
+  readonly serverTime: string;
+}
+
+export interface PushSaveSlotRequest<TPayload = unknown> {
+  readonly schemaVersion: number;
+  readonly baseRevision: number;
+  readonly force?: boolean;
+  readonly puzzleId: string;
+  readonly completed: boolean;
+  readonly deleted: boolean;
+  readonly elapsedMs: number;
+  readonly filledCells: number;
+  readonly payload: TPayload;
+  readonly clientUpdatedAt: string;
+}
+
+export type SavePushResolution =
+  | 'applied'
+  | 'auto_completed_local'
+  | 'auto_completed_remote';
+
+export type PushSaveSlotResult<TPayload = unknown> =
+  | {
+      readonly ok: true;
+      readonly resolution: SavePushResolution;
+      readonly save: CloudSaveRecord<TPayload>;
+    }
+  | {
+      readonly ok: false;
+      readonly kind: 'conflict';
+      readonly serverSave: CloudSaveRecord<TPayload>;
+    }
+  | {
+      readonly ok: false;
+      readonly kind: 'offline' | 'unauthorized' | 'too_large' | 'error';
+      readonly message?: string;
+    };
+
+export interface PushRecordsBatchItem {
+  readonly gameId: string;
+  readonly puzzleId: string;
+  readonly difficulty: string;
+  readonly mode: 'standard' | 'daily';
+  readonly dailyDate?: string;
+  readonly status: 'started' | 'completed';
+  readonly elapsedMs: number;
+  readonly hintsUsed: number;
+  readonly startedAt: string;
+  readonly completedAt?: string;
+}
+
+export interface PushRecordsBatchResponse {
+  readonly appliedCount: number;
+  readonly records: readonly PuzzleRecordLogEntry[];
+}
+
+export interface PushPreferencesResponse {
+  readonly preferences: SyncedProfilePreferences & {
+    readonly profileId: string;
+    readonly serverUpdatedAt: string;
+  };
+  readonly applied: boolean;
+}
+
+export interface SyncApiClient {
+  pullProfileSync(
+    remoteProfileId: string,
+    options?: { readonly gameId?: string; readonly since?: string },
+  ): Promise<ApiResult<PullProfileSyncResponse>>;
+  pushSaveSlot<TPayload = unknown>(
+    remoteProfileId: string,
+    gameId: string,
+    slot: string,
+    body: PushSaveSlotRequest<TPayload>,
+    options?: { readonly keepalive?: boolean },
+  ): Promise<PushSaveSlotResult<TPayload>>;
+  pushRecordsBatch(
+    remoteProfileId: string,
+    records: readonly PushRecordsBatchItem[],
+    options?: { readonly keepalive?: boolean },
+  ): Promise<ApiResult<PushRecordsBatchResponse>>;
+  pushPreferences(
+    remoteProfileId: string,
+    prefs: SyncedProfilePreferences,
+    options?: { readonly keepalive?: boolean },
+  ): Promise<ApiResult<PushPreferencesResponse>>;
 }
